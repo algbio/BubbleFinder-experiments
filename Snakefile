@@ -278,12 +278,111 @@ def all_threads_values():
     vals = set()
     for dname in all_enabled_dataset_names():
         for p in bench_programs_for_dataset(dname):
-            for t in threads_for_prog_dataset(p, dname):
-                try:
+            if p == "BubbleFinder":
+                for mode in bubblefinder_modes(dname):
+                    for t in bubblefinder_threads(dname, mode):
+                        vals.add(int(t))
+            else:
+                for t in threads_for_prog_dataset(p, dname):
                     vals.add(int(t))
-                except Exception:
-                    pass
-    return sorted(vals or [1])
+    return sorted(vals or [1])  
+
+
+PROGRAM_OPTS_GLOBAL = (BENCH.get("program_opts", {}) or {})
+
+def program_opts(dataset, prog):
+    base = dict(PROGRAM_OPTS_GLOBAL.get(prog, {}) or {})
+    local = (((ds(dataset).get("bench", {}) or {}).get("program_opts", {}) or {}).get(prog, {}) or {})
+    base.update(local)
+    return base
+
+def bubblefinder_modes(dataset):
+    opts = program_opts(dataset, "BubbleFinder")
+    modes = opts.get("modes", ["superbubbles"])
+    if isinstance(modes, str):
+        modes = [modes]
+    return [str(m) for m in modes]
+
+def bubblefinder_mode_opts(dataset, mode):
+    opts = program_opts(dataset, "BubbleFinder")
+    base = dict((opts.get("default", {}) or {}))
+    by_mode = (opts.get("by_mode", {}) or {})
+    base.update(by_mode.get(mode, {}) or {})
+    return base
+
+def bubblefinder_threads(dataset, mode):
+    mopts = bubblefinder_mode_opts(dataset, mode)
+    thr = mopts.get("threads")
+    if thr is not None:
+        if isinstance(thr, (int, str)):
+            return [int(thr)]
+        return [int(x) for x in thr]
+
+    gp = THREADS_BY_PROGRAM_GLOBAL.get("BubbleFinder")
+    if gp:
+        return [int(x) for x in gp]
+
+    return [1]
+
+def bubblefinder_input_for_mode(dataset, mode):
+    mopts = bubblefinder_mode_opts(dataset, mode)
+    kind = mopts.get("input", "gfa")
+    if kind == "gfa":
+        return os.path.join(DATA_DIR, dataset, f"{dataset}.cleaned.gfa")
+    elif kind == "sgraph":
+        return os.path.join(DATA_DIR, dataset, f"{dataset}.sbspqr.sgraph")
+    else:
+        raise WorkflowError(f"BubbleFinder: unknown input='{kind}' for dataset={dataset} mode={mode}")
+
+def bubblefinder_cmd(dataset, mode, graph_in, out_path, report_path, threads):
+    mopts = bubblefinder_mode_opts(dataset, mode)
+    extra = mopts.get("extra_args", [])
+    if isinstance(extra, str):
+        extra = shlex.split(extra)
+
+    t = int(threads)
+    thr_flag = (f" {SPQR_THREADS_FLAG} {t}" if SPQR_THREADS_FLAG else "")
+
+    report_clause = ""
+    if report_path and SPQR_REPORT_FLAG:
+        report_clause = (
+            f" {SPQR_REPORT_FLAG}{shlex.quote(report_path)}"
+            if SPQR_REPORT_FLAG.endswith("=")
+            else f" {SPQR_REPORT_FLAG} {shlex.quote(report_path)}"
+        )
+
+    extra_str = (" " + shlex.join(extra)) if extra else ""
+
+    # CLI demandée: ./BubbleFinder <command> -g <graphFile> -o <outputFile> [options]
+    return (
+        f"OMP_NUM_THREADS={t} "
+        f"{shlex.quote(SPQR_BIN)} {shlex.quote(mode)} "
+        f"-g {shlex.quote(graph_in)} -o {shlex.quote(out_path)}"
+        f"{thr_flag}{report_clause}{extra_str}"
+    )
+
+def all_bubblefinder_modes():
+    modes = set()
+    for n in all_enabled_dataset_names():
+        if "BubbleFinder" in bench_programs_for_dataset(n):
+            modes.update(bubblefinder_modes(n))
+    return sorted(modes or ["superbubbles"])
+
+def bubblefinder_class(dataset, mode):
+
+    mopts = bubblefinder_mode_opts(dataset, mode)
+
+    if "class" in mopts:
+        return str(mopts["class"])
+
+    kind = str(mopts.get("input", "gfa"))
+    if kind == "sgraph":
+        return "SB"
+
+    if mode == "directed-superbubbles" or str(mode).startswith("directed"):
+        return "SB"
+
+    return "BiSB"
 
 # -----------------------------------------------------------------------------
 # Includes
@@ -686,6 +785,11 @@ def bench_signature(prog, dataset, rep, threads=None):
         conf["spqr_flag"] = SPQR_SGRAPH_FLAG
     if prog == "clsd_sb":
         conf["clsd_bin"] = os.path.abspath(CLSD_BIN)
+
+    if prog == "BubbleFinder":
+        conf["mode"] = mode   
+        conf["mode_opts"] = bubblefinder_mode_opts(dataset, mode)
+
     blob = json.dumps(conf, sort_keys=True).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 
@@ -910,28 +1014,21 @@ def sb_augment_report_json(json_path):
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, sort_keys=True)
 
-# -----------------------------------------------------------------------------
-# Quels binaires doit-on construire automatiquement ?
-# -----------------------------------------------------------------------------
 def tool_binaries_to_build(wildcards):
     files = []
 
-    # sbSPQR_* (GFA/snarls/sgraph)
-    need_sbspqr = any(is_program_sbspqr(p) for p in all_selected_programs())
-    if need_sbspqr and SPQR_BIN == SPQR_BIN_DEFAULT:
+    need_bf = ("BubbleFinder" in all_selected_programs())
+    if need_bf and SPQR_BIN == SPQR_BIN_DEFAULT:
         files.append(SPQR_BIN_DEFAULT)
 
-    # clsd pour clsd_sb
     need_clsd = "clsd_sb" in all_selected_programs()
     if need_clsd and CLSD_BIN == CLSD_BIN_DEFAULT:
         files.append(CLSD_BIN_DEFAULT)
 
-    # Lighter si un dataset utilise ggcat_from_reads_lighter
     need_lighter = any(d.get("builder") == "ggcat_from_reads_lighter" for d in DS.values())
     if need_lighter and LIGHTER_BIN == LIGHTER_BIN_DEFAULT:
         files.append(LIGHTER_BIN_DEFAULT)
 
-    # get_blunted pour vg_snarls_gfa (et autres vérif blunt)
     need_get_blunted = need_vg_snarls()
     if need_get_blunted and GET_BLUNTED == GET_BLUNTED_DEFAULT:
         files.append(GET_BLUNTED_DEFAULT)
@@ -1050,8 +1147,8 @@ rule prechecks:
         if TIMEOUT_ENABLED and not (os.path.isabs(TIMEOUT_BIN) and is_executable(TIMEOUT_BIN)) and shutil.which(TIMEOUT_BIN) is None:
             print(f"[WARN] timeout not found ({TIMEOUT_BIN}); benchmark commands will run without timeout.", flush=True)
 
-        need_sbspqr = any(is_program_sbspqr(p) for p in all_selected_programs())
-        if need_sbspqr and not is_executable(SPQR_BIN):
+        need_bf = ("BubbleFinder" in all_selected_programs())
+        if need_bf and not is_executable(SPQR_BIN):
             raise WorkflowError(f"sbSPQR (sbfind/BubbleFinder) not found or not executable: {SPQR_BIN}")
 
         if shutil.which("conda") is None and shutil.which("mamba") is None:
@@ -1089,6 +1186,9 @@ rule prechecks:
                 )
 
         open(output[0], "w").close()
+
+
+
 
 rule gfa_bluntify_clean:
     message: "Bluntify + clean GFA for {wildcards.dataset}"
@@ -1227,17 +1327,21 @@ rule bench_BubbleGun_gfa:
             f.write("SigV\t1\n")
             f.write(f"Signature\t{sig}\n")
 
-rule bench_sbSPQR_gfa:
-    message: "Bench BubbleFinder (bidirectional) on {wildcards.dataset} rep={wildcards.rep} t={wildcards.t}"
+rule bench_BubbleFinder:
+    message: "Bench BubbleFinder mode={wildcards.mode} on {wildcards.dataset} rep={wildcards.rep} t={wildcards.t}"
     input:
-        gfa=os.path.join(DATA_DIR, "{dataset}", "{dataset}.cleaned.gfa"),
+        graph=lambda wc: bubblefinder_input_for_mode(wc.dataset, wc.mode),
         pre=rules.prechecks.output
     output:
-        tsv=os.path.join(OUT_DIR, "bench", "sbSPQR_gfa", "{dataset}.t{t}.rep{rep}.tsv"),
-        prog=os.path.join(OUT_DIR, "prog_out", "sbSPQR_gfa", "{dataset}.t{t}.rep{rep}.out"),
-        report=os.path.join(OUT_DIR, "prog_out", "sbSPQR_gfa", "{dataset}.t{t}.rep{rep}.report.json")
+        tsv=os.path.join(OUT_DIR, "bench", "BubbleFinder",
+                         "{dataset}.{mode}.t{t}.rep{rep}.tsv"),
+        prog=os.path.join(OUT_DIR, "prog_out", "BubbleFinder",
+                          "{dataset}.{mode}.t{t}.rep{rep}.out"),
+        report=os.path.join(OUT_DIR, "prog_out", "BubbleFinder",
+                            "{dataset}.{mode}.t{t}.rep{rep}.report.json")
     log:
-        os.path.join(OUT_DIR, "logs", "bench", "sbSPQR_gfa", "{dataset}.t{t}.rep{rep}.log")
+        os.path.join(OUT_DIR, "logs", "bench", "BubbleFinder",
+                     "{dataset}.{mode}.t{t}.rep{rep}.log")
     threads:
         lambda wc: int(wc.t)
     resources:
@@ -1245,126 +1349,29 @@ rule bench_sbSPQR_gfa:
     run:
         os.makedirs(os.path.dirname(output.prog), exist_ok=True)
         os.makedirs(os.path.dirname(output.report), exist_ok=True)
-        target = "/dev/null" if SINK_OUTPUT else output.prog
-        t = int(wildcards.t)
-        thr_flag = (f" {SPQR_THREADS_FLAG} {t}" if SPQR_THREADS_FLAG else "")
-        report_clause = (f"{SPQR_REPORT_FLAG}{shlex.quote(output.report)}"
-                         if SPQR_REPORT_FLAG.endswith("=")
-                         else f"{SPQR_REPORT_FLAG} {shlex.quote(output.report)}")
-        cmd = f"OMP_NUM_THREADS={t} {shlex.quote(SPQR_BIN)} -g {shlex.quote(input.gfa)} {SPQR_GFA_FLAG}{thr_flag} {report_clause} -o {shlex.quote(target)}"
-        shell(time_to_tsv(cmd, output.tsv, log, ensure_path=(None if SINK_OUTPUT else output.prog)))
-        if not os.path.isfile(output.report) or os.path.getsize(output.report) == 0:
-            with open(output.report, "w", encoding="utf-8") as jf:
-                jf.write("{}")
-        with open(output.tsv, "a", encoding="utf-8") as f:
-            f.write("Program\tsbSPQR_gfa\n")
-            f.write(f"Class\t{program_class('sbSPQR_gfa')}\n")
-            f.write("Input\tGFA\n")
-            f.write(f"Threads\t{t}\n")
-            sig = bench_signature("sbSPQR_gfa", wildcards.dataset, wildcards.rep, threads=t)
-            f.write("SigV\t1\n")
-            f.write(f"Signature\t{sig}\n")
-        vals = sb_summarize_report(output.report)
-        with open(output.tsv, "a", encoding="utf-8") as f:
-            for k, v in vals.items():
-                f.write(f"{k}\t{v}\n")
-        try:
-            sb_augment_report_json(output.report)
-        except Exception:
-            pass
 
-rule bench_sbSPQR_snarls_gfa:
-    message: "Bench BubbleFinder snarls (GFA) on {wildcards.dataset} rep={wildcards.rep} t={wildcards.t}"
-    input:
-        gfa=os.path.join(DATA_DIR, "{dataset}", "{dataset}.cleaned.gfa"),
-        pre=rules.prechecks.output
-    output:
-        tsv=os.path.join(OUT_DIR, "bench", "sbSPQR_snarls_gfa", "{dataset}.t{t}.rep{rep}.tsv"),
-        prog=os.path.join(OUT_DIR, "prog_out", "sbSPQR_snarls_gfa", "{dataset}.t{t}.rep{rep}.out"),
-        report=os.path.join(OUT_DIR, "prog_out", "sbSPQR_snarls_gfa", "{dataset}.t{t}.rep{rep}.report.json")
-    log:
-        os.path.join(OUT_DIR, "logs", "bench", "sbSPQR_snarls_gfa", "{dataset}.t{t}.rep{rep}.log")
-    threads:
-        lambda wc: int(wc.t)
-    resources:
-        benchmark = 200
-    run:
-        os.makedirs(os.path.dirname(output.prog), exist_ok=True)
-        os.makedirs(os.path.dirname(output.report), exist_ok=True)
         target = "/dev/null" if SINK_OUTPUT else output.prog
-        t = int(wildcards.t)
-        thr_flag = (f" {SPQR_THREADS_FLAG} {t}" if SPQR_THREADS_FLAG else "")
-        report_clause = (f"{SPQR_REPORT_FLAG}{shlex.quote(output.report)}"
-                         if SPQR_REPORT_FLAG.endswith("=")
-                         else f"{SPQR_REPORT_FLAG} {shlex.quote(output.report)}")
-        cmd = f"OMP_NUM_THREADS={t} {shlex.quote(SPQR_BIN)} -g {shlex.quote(input.gfa)} {SPQR_GFA_FLAG} --snarls{thr_flag} {report_clause} -o {shlex.quote(target)}"
-        shell(time_to_tsv(cmd, output.tsv, log, ensure_path=(None if SINK_OUTPUT else output.prog)))
-        if not os.path.isfile(output.report) or os.path.getsize(output.report) == 0:
-            with open(output.report, "w", encoding="utf-8") as jf:
-                jf.write("{}")
-        with open(output.tsv, "a", encoding="utf-8") as f:
-            f.write("Program\tsbSPQR_snarls_gfa\n")
-            f.write(f"Class\t{program_class('sbSPQR_snarls_gfa')}\n")
-            f.write("Input\tGFA\n")
-            f.write(f"Threads\t{t}\n")
-            sig = bench_signature("sbSPQR_snarls_gfa", wildcards.dataset, wildcards.rep, threads=t)
-            f.write("SigV\t1\n")
-            f.write(f"Signature\t{sig}\n")
-        vals = sb_summarize_report(output.report)
-        with open(output.tsv, "a", encoding="utf-8") as f:
-            for k, v in vals.items():
-                f.write(f"{k}\t{v}\n")
-        try:
-            sb_augment_report_json(output.report)
-        except Exception:
-            pass
+        cmd = bubblefinder_cmd(
+            dataset=wildcards.dataset,
+            mode=wildcards.mode,
+            graph_in=input.graph,
+            out_path=target,
+            report_path=output.report,
+            threads=threads
+        )
 
-rule bench_sbSPQR_sb:
-    message: "Bench BubbleFinder (unidirectional, sgraph) on {wildcards.dataset} rep={wildcards.rep} t={wildcards.t}"
-    input:
-        sgraph=os.path.join(DATA_DIR, "{dataset}", "{dataset}.sbspqr.sgraph"),
-        pre=rules.prechecks.output
-    output:
-        tsv=os.path.join(OUT_DIR, "bench", "sbSPQR_sb", "{dataset}.t{t}.rep{rep}.tsv"),
-        prog=os.path.join(OUT_DIR, "prog_out", "sbSPQR_sb", "{dataset}.t{t}.rep{rep}.out"),
-        report=os.path.join(OUT_DIR, "prog_out", "sbSPQR_sb", "{dataset}.t{t}.rep{rep}.report.json")
-    log:
-        os.path.join(OUT_DIR, "logs", "bench", "sbSPQR_sb", "{dataset}.t{t}.rep{rep}.log")
-    threads:
-        lambda wc: int(wc.t)
-    resources:
-        benchmark = 200
-    run:
-        os.makedirs(os.path.dirname(output.prog), exist_ok=True)
-        os.makedirs(os.path.dirname(output.report), exist_ok=True)
-        target = "/dev/null" if SINK_OUTPUT else output.prog
-        t = int(wildcards.t)
-        thr_flag = (f" {SPQR_THREADS_FLAG} {t}" if SPQR_THREADS_FLAG else "")
-        report_clause = (f"{SPQR_REPORT_FLAG}{shlex.quote(output.report)}"
-                         if SPQR_REPORT_FLAG.endswith("=")
-                         else f"{SPQR_REPORT_FLAG} {shlex.quote(output.report)}")
-        cmd = f"OMP_NUM_THREADS={t} {shlex.quote(SPQR_BIN)} -g {shlex.quote(input.sgraph)}{thr_flag} {report_clause} -o {shlex.quote(target)}"
         shell(time_to_tsv(cmd, output.tsv, log, ensure_path=(None if SINK_OUTPUT else output.prog)))
         if not os.path.isfile(output.report) or os.path.getsize(output.report) == 0:
             with open(output.report, "w", encoding="utf-8") as jf:
                 jf.write("{}")
+        cls = bubblefinder_class(wildcards.dataset, wildcards.mode)
+        kind = bubblefinder_mode_opts(wildcards.dataset, wildcards.mode).get("input", "gfa")
         with open(output.tsv, "a", encoding="utf-8") as f:
-            f.write("Program\tsbSPQR_sb\n")
-            f.write(f"Class\t{program_class('sbSPQR_sb')}\n")
-            f.write("Input\tsgraph\n")
-            f.write(f"SB_ggcat_f\t{sb_ggcat_f_value(wildcards.dataset)}\n")
-            f.write(f"Threads\t{t}\n")
-            sig = bench_signature("sbSPQR_sb", wildcards.dataset, wildcards.rep, threads=t)
-            f.write("SigV\t1\n")
-            f.write(f"Signature\t{sig}\n")
-        vals = sb_summarize_report(output.report)
-        with open(output.tsv, "a", encoding="utf-8") as f:
-            for k, v in vals.items():
-                f.write(f"{k}\t{v}\n")
-        try:
-            sb_augment_report_json(output.report)
-        except Exception:
-            pass
+            f.write(f"Program\tBubbleFinder:{wildcards.mode}\n")
+            f.write(f"Class\t{cls}\n")
+            f.write(f"Input\t{kind}\n")
+            f.write("Input\tgraph\n")
+            f.write(f"Threads\t{threads}\n")
 
 rule bench_vg_snarls_gfa:
     message: "Bench vg snarls on {wildcards.dataset} rep={wildcards.rep} t={wildcards.t}"
@@ -1451,9 +1458,23 @@ def ALL_TSVS():
         progs = bench_programs_for_dataset(dname)
         for p in progs:
             tset = threads_for_prog_dataset(p, dname)
-            for t in tset:
-                for r in range(1, REPS + 1):
-                    tsvs.append(os.path.join(OUT_DIR, "bench", p, f"{dname}.t{t}.rep{r}.tsv"))
+
+            if p == "BubbleFinder":
+                modes = bubblefinder_modes(dname)
+                for mode in modes:
+                    tset_mode = bubblefinder_threads(dname, mode)
+                    for t in tset_mode:
+                        for r in range(1, REPS + 1):
+                            tsvs.append(os.path.join(
+                                OUT_DIR, "bench", "BubbleFinder",
+                                f"{dname}.{mode}.t{t}.rep{r}.tsv"
+                            ))
+            else:
+                for t in tset:
+                    for r in range(1, REPS + 1):
+                        tsvs.append(os.path.join(
+                            OUT_DIR, "bench", p, f"{dname}.t{t}.rep{r}.tsv"
+                        ))
     return tsvs
 
 
@@ -1506,4 +1527,5 @@ rule aggregate_and_plot:
 wildcard_constraints:
     dataset="|".join(all_enabled_dataset_names()),
     rep="|".join(str(i) for i in range(1, REPS + 1)),
-    t="|".join(str(x) for x in all_threads_values())
+    t="|".join(str(x) for x in all_threads_values()),
+    mode="|".join(all_bubblefinder_modes())

@@ -84,11 +84,24 @@ defaults:
     reps: 2
     programs:
       - BubbleGun_gfa
-      - sbSPQR_gfa
+      - BubbleFinder
       - vg_snarls_gfa
-      - clsd_sb       
-      - sbSPQR_sb      
-      - sbSPQR_snarls_gfa
+      - clsd_sb
+    program_opts:
+      BubbleFinder:
+        modes: ["superbubbles", "snarls"]
+
+        default:
+          input: "gfa"
+          extra_args: []
+          threads: [1,4,8]          
+
+        by_mode:
+          superbubbles:
+            threads: [1,2,4,8]
+          snarls:
+            threads: [1,4,8,16]        
+
     sink_output: false  # if true, discard program outputs to /dev/null
     debug: false        # if true, add bash xtrace inside benchmarked commands
 
@@ -99,17 +112,13 @@ defaults:
 
     program_classes:
       BubbleGun_gfa: BiSB
-      sbSPQR_gfa: BiSB
+      BubbleFinder: BiSB
       vg_snarls_gfa: BiSB
       clsd_sb: SB
-      sbSPQR_sb: SB
-      sbSPQR_snarls_gfa: BiSB
 
 
     threads_by_program:
-      sbSPQR_gfa: [1,4,8,16]
-      sbSPQR_sb: [1,4,8,16]
-      sbSPQR_snarls_gfa: [1,4,8,16]
+      BubbleFinder: [1,4,8,16]
       vg_snarls_gfa: [1,4,8,16]
 
 
@@ -136,9 +145,17 @@ datasets:
       url: https://zenodo.org/records/7937947/files/ecoli50.gfa.zst?download=1
     bench_programs:
       - BubbleGun_gfa
-      - sbSPQR_gfa
+      - BubbleFinder
       - vg_snarls_gfa
-      - sbSPQR_snarls_gfa
+    # bench:
+    #   program_opts:
+    #     BubbleFinder:
+    #       modes: ["directed-superbubbles"]   # juste ce mode pour ce dataset
+    #       by_mode:
+    #         snarls:
+    #           extra_args: ["--some-flag", "123"]
+    #           threads: [8,16,32]
+
 
   - name: primates_chr6
     enabled: true
@@ -147,9 +164,8 @@ datasets:
       url: 'https://zenodo.org/records/7937947/files/primates14.chr6.fa.gz.667b9b6.c2fac19.ee137be.smooth.final.gfa.zst?download=1'
     bench_programs:
       - BubbleGun_gfa
-      - sbSPQR_gfa
+      - BubbleFinder
       - vg_snarls_gfa
-      - sbSPQR_snarls_gfa
 
   # ---------------------------------------------------------------------------
   # pggb pangenome graphs from Zenodo .fa.gz
@@ -164,9 +180,8 @@ datasets:
       extra_opts: ""
     bench_programs:
       - BubbleGun_gfa
-      - sbSPQR_gfa
+      - BubbleFinder
       - vg_snarls_gfa
-      - sbSPQR_snarls_gfa
 
   - name: tomato23_chr2
     enabled: true
@@ -177,9 +192,8 @@ datasets:
       extra_opts: ""
     bench_programs:
       - BubbleGun_gfa
-      - sbSPQR_gfa
+      - BubbleFinder
       - vg_snarls_gfa
-      - sbSPQR_snarls_gfa
 
   # ---------------------------------------------------------------------------
   # Ultrabubble datasets via vg_from_vcf
@@ -195,9 +209,8 @@ datasets:
       max_node_length: 3000000
     bench_programs:
       - BubbleGun_gfa
-      - sbSPQR_gfa
+      - BubbleFinder
       - vg_snarls_gfa
-      - sbSPQR_snarls_gfa
 
   - name: Ultrabubble_dataset_chr10
     enabled: true
@@ -210,9 +223,8 @@ datasets:
       max_node_length: 3000000
     bench_programs:
       - BubbleGun_gfa
-      - sbSPQR_gfa
+      - BubbleFinder
       - vg_snarls_gfa
-      - sbSPQR_snarls_gfa
    
   - name: Ultrabubble_dataset_chr22
     enabled: true
@@ -225,9 +237,8 @@ datasets:
       max_node_length: 3000000
     bench_programs:
       - BubbleGun_gfa
-      - sbSPQR_gfa
+      - BubbleFinder
       - vg_snarls_gfa
-      - sbSPQR_snarls_gfa
 
   # ---------------------------------------------------------------------------
   # Manually built DBGs
@@ -258,6 +269,5 @@ datasets:
       ggcat_force_f: true
     bench_programs:
       - BubbleGun_gfa
-      - sbSPQR_gfa
+      - BubbleFinder
       - vg_snarls_gfa
-      - sbSPQR_snarls_gfa

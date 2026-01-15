@@ -46,12 +46,15 @@ FRAME_PX = 28
 WHITE_FRAME_PX = FRAME_PX
 
 COL_SPEC = [
-    ("SB",    "CSLD",      "clsd_sb",                False),
-    ("SB",    "SPQR",      "sbSPQR_sb",              True),
-    ("BiSB",  "BubbleGun", "BubbleGun_gfa",          False),
-    ("BiSB",  "SPQR",      "sbSPQR_gfa",             True),
-    ("Snarl", "vg_snarls", "vg_snarls_gfa",          True),
-    ("Snarl", "SPQR",      "sbSPQR_snarls_gfa",      True),
+    ("SB",    "CSLD",        "clsd_sb",                           False),
+    ("BiSB",  "BubbleGun",   "BubbleGun_gfa",                     False),
+
+    ("BiSB",  "BubbleFinder","BubbleFinder:superbubbles",         True),
+    ("SB",    "BubbleFinder","BubbleFinder:directed-superbubbles",True),
+    ("BiSB",  "BubbleFinder","BubbleFinder:ultrabubbles",         True),
+    ("Snarl", "BubbleFinder","BubbleFinder:snarls",               True),
+
+    ("Snarl", "vg_snarls",   "vg_snarls_gfa",                     True),
 ]
 
 FAMILY_COLORS = {
@@ -68,8 +71,12 @@ DEFAULT_DATASET_RENAME = {
 
 PHASES = ["I/O", "BUILD", "LOGIC"]
 
-PHASE_PROGRAMS_DEFAULT = {"sbSPQR_sb", "sbSPQR_gfa", "sbSPQR_snarls_gfa"}
-
+PHASE_PROGRAMS_DEFAULT = {
+    "BubbleFinder:superbubbles",
+    "BubbleFinder:directed-superbubbles",
+    "BubbleFinder:snarls",
+    "BubbleFinder:ultrabubbles",
+}
 
 def _add_frame_to_png(png_path: Path, border_px: int, mode: str = "none") -> bool:
     if mode == "none" or border_px <= 0 or not png_path.exists():
@@ -625,15 +632,62 @@ def _fill_missing_from_paths(df: pd.DataFrame) -> pd.DataFrame:
                 pass
     return df
 
-
 def load_runs(tsv_path: Path) -> pd.DataFrame:
     df = pd.read_csv(tsv_path, sep="\t", dtype=str)
     df = _normalize_columns(df)
     cols = set(df.columns)
 
-    if {"dataset", "program", "replicate"}.issubset(cols) and (
-        {"elapsed_sec", "rss_kb"} & cols
-    ):
+    def _maybe_suffix_dataset_with_threads(ds_val, thr_val):
+        ds = "" if ds_val is None else str(ds_val)
+        base, existing = split_dataset_base_threads(ds)
+        if existing is not None:
+            return ds
+        if thr_val is None or (isinstance(thr_val, float) and np.isnan(thr_val)):
+            return ds
+        try:
+            t = int(float(thr_val))
+        except Exception:
+            return ds
+        return f"{ds}.t{t}"
+
+    def _threads_from_path(p):
+        if not isinstance(p, str) or not p:
+            return np.nan
+        stem = Path(p).stem
+        m = re.search(r"\.t(?P<t>\d+)\.rep\d+$", stem)
+        if m:
+            try:
+                return int(m.group("t"))
+            except Exception:
+                return np.nan
+        m = re.search(r"[._-]t(?P<t>\d+)(?:[._-]|$)", stem)
+        if m:
+            try:
+                return int(m.group("t"))
+            except Exception:
+                return np.nan
+        return np.nan
+
+    df = df.copy()
+    thr_series = None
+
+    for c in ["threads", "thread", "t"]:
+        if c in df.columns:
+            thr_series = pd.to_numeric(df[c], errors="coerce")
+            break
+
+    if thr_series is None and "path" in df.columns:
+        thr_series = df["path"].apply(_threads_from_path)
+
+    if thr_series is not None and "dataset" in df.columns:
+        df["dataset"] = [
+            _maybe_suffix_dataset_with_threads(ds, thr)
+            for ds, thr in zip(df["dataset"].tolist(), thr_series.tolist())
+        ]
+
+    cols = set(df.columns)
+
+    if {"dataset", "program", "replicate"}.issubset(cols) and ({"elapsed_sec", "rss_kb"} & cols):
         df = _fill_missing_from_paths(df)
 
         def s_num(col):
@@ -650,37 +704,21 @@ def load_runs(tsv_path: Path) -> pd.DataFrame:
             if f"{prefix}_peak_hwm_gib" in df.columns:
                 tmp = s_num(f"{prefix}_peak_hwm_gib") * 1024.0 * 1024.0
                 kb = tmp if kb is None else kb.fillna(tmp)
-            return (
-                kb
-                if kb is not None
-                else pd.Series([np.nan] * len(df), index=df.index)
-            )
+            return kb if kb is not None else pd.Series([np.nan] * len(df), index=df.index)
 
         runs = pd.DataFrame(
             {
                 "dataset": df.get("dataset"),
                 "program": df.get("program"),
                 "replicate": df.get("replicate"),
-                "elapsed_s": pd.to_numeric(
-                    df.get("elapsed_sec"), errors="coerce"
-                ),
-                "max_rss_kb": pd.to_numeric(
-                    df.get("rss_kb"), errors="coerce"
-                ),
-                "timed_out": pd.to_numeric(
-                    df.get("timed_out"), errors="coerce"
-                )
-                .fillna(0)
-                .astype(int),
+                "elapsed_s": pd.to_numeric(df.get("elapsed_sec"), errors="coerce"),
+                "max_rss_kb": pd.to_numeric(df.get("rss_kb"), errors="coerce"),
+                "timed_out": pd.to_numeric(df.get("timed_out"), errors="coerce").fillna(0).astype(int),
                 "timeout_s": pd.to_numeric(
-                    df.get("timeout_s")
-                    if "timeout_s" in df.columns
-                    else df.get("prev_timeout"),
+                    df.get("timeout_s") if "timeout_s" in df.columns else df.get("prev_timeout"),
                     errors="coerce",
                 ),
-                "exit_status": pd.to_numeric(
-                    df.get("exit_status"), errors="coerce"
-                ),
+                "exit_status": pd.to_numeric(df.get("exit_status"), errors="coerce"),
                 "io_s": s_num("sb_io_s"),
                 "build_s": s_num("sb_build_s"),
                 "logic_s": s_num("sb_logic_s"),
@@ -698,9 +736,7 @@ def load_runs(tsv_path: Path) -> pd.DataFrame:
             df["replicate"] = 1
 
         rows = []
-        for (dset, prog, rep), g in df.groupby(
-            ["dataset", "program", "replicate"], dropna=False
-        ):
+        for (dset, prog, rep), g in df.groupby(["dataset", "program", "replicate"], dropna=False):
             rec = {
                 "dataset": dset,
                 "program": prog,
@@ -716,7 +752,10 @@ def load_runs(tsv_path: Path) -> pd.DataFrame:
                 "io_peak_kb": np.nan,
                 "build_peak_kb": np.nan,
                 "logic_peak_kb": np.nan,
+                # threads (optionnel, pour suffixer dataset si besoin)
+                "_threads": np.nan,
             }
+
             for _, r in g.iterrows():
                 c = _canon_metric_name(r["metric"])
                 val = r["value"]
@@ -749,6 +788,14 @@ def load_runs(tsv_path: Path) -> pd.DataFrame:
                         pass
                     continue
 
+                # IMPORTANT: récupérer Threads si présent sous forme de metric
+                if c in ("threads", "thread"):
+                    try:
+                        rec["_threads"] = int(float(val))
+                    except Exception:
+                        pass
+                    continue
+
                 if c in ("sb_io_s", "sb_build_s", "sb_logic_s"):
                     key = c.replace("sb_", "").replace("_s", "")
                     try:
@@ -757,11 +804,7 @@ def load_runs(tsv_path: Path) -> pd.DataFrame:
                         pass
                     continue
 
-                if c in (
-                    "sb_io_peak_hwm_bytes",
-                    "sb_build_peak_hwm_bytes",
-                    "sb_logic_peak_hwm_bytes",
-                ):
+                if c in ("sb_io_peak_hwm_bytes", "sb_build_peak_hwm_bytes", "sb_logic_peak_hwm_bytes"):
                     key = c.replace("sb_", "").replace("_peak_hwm_bytes", "")
                     try:
                         rec[f"{key}_peak_kb"] = float(val) / 1024.0
@@ -769,11 +812,7 @@ def load_runs(tsv_path: Path) -> pd.DataFrame:
                         pass
                     continue
 
-                if c in (
-                    "sb_io_peak_hwm_gib",
-                    "sb_build_peak_hwm_gib",
-                    "sb_logic_peak_hwm_gib",
-                ):
+                if c in ("sb_io_peak_hwm_gib", "sb_build_peak_hwm_gib", "sb_logic_peak_hwm_gib"):
                     key = c.replace("sb_", "").replace("_peak_hwm_gib", "")
                     try:
                         rec[f"{key}_peak_kb"] = float(val) * 1024.0 * 1024.0
@@ -781,7 +820,10 @@ def load_runs(tsv_path: Path) -> pd.DataFrame:
                         pass
                     continue
 
+            rec["dataset"] = _maybe_suffix_dataset_with_threads(rec["dataset"], rec["_threads"])
+            rec.pop("_threads", None)
             rows.append(rec)
+
         return pd.DataFrame(rows)
 
     raise ValueError(
@@ -790,13 +832,35 @@ def load_runs(tsv_path: Path) -> pd.DataFrame:
         "(dataset, program, rep/replicate, elapsed_sec, rss_kb, ...)."
     )
 
-
 def _safe_float(x, default=np.nan):
     try:
         return float(x)
     except Exception:
         return default
 
+def _parse_run_stem(stem: str):
+    if stem.endswith(".report"):
+        stem = stem[:-7]
+
+    # dataset.mode.t{t}.rep{rep}
+    m = re.match(
+        r"^(?P<dataset>.+)\.(?P<mode>[^.]+)\.t(?P<t>\d+)\.rep(?P<rep>\d+)$",
+        stem,
+    )
+    if m:
+        return m.group("dataset"), m.group("mode"), m.group("t"), m.group("rep")
+
+    # dataset.t{t}.rep{rep}
+    m = re.match(r"^(?P<dataset>.+)\.t(?P<t>\d+)\.rep(?P<rep>\d+)$", stem)
+    if m:
+        return m.group("dataset"), None, m.group("t"), m.group("rep")
+
+    # dataset.rep{rep}
+    m = re.match(r"^(?P<dataset>.+)\.rep(?P<rep>\d+)$", stem)
+    if m:
+        return m.group("dataset"), None, None, m.group("rep")
+
+    return None
 
 def _parse_report_name_to_dataset_replicate(
     stem: str,
@@ -983,46 +1047,82 @@ def _extract_total_from_json(obj: dict) -> tuple[float, float]:
 
     return elapsed_s, max_rss_kb
 
-
 def load_phase_metrics_from_results(results_root: Path) -> pd.DataFrame:
     prog_out = results_root / "prog_out"
+    cols = [
+        "dataset",
+        "program",
+        "replicate",
+        "elapsed_s",
+        "max_rss_kb",
+        "timed_out",
+        "timeout_s",
+        "exit_status",
+        "io_s",
+        "build_s",
+        "logic_s",
+        "io_peak_kb",
+        "build_peak_kb",
+        "logic_peak_kb",
+    ]
+
     if not prog_out.is_dir():
-        return pd.DataFrame(
-            columns=[
-                "dataset",
-                "program",
-                "replicate",
-                "elapsed_s",
-                "max_rss_kb",
-                "timed_out",
-                "timeout_s",
-                "exit_status",
-                "io_s",
-                "build_s",
-                "logic_s",
-                "io_peak_kb",
-                "build_peak_kb",
-                "logic_peak_kb",
-            ]
+        return pd.DataFrame(columns=cols)
+
+    def _parse_run_stem(stem: str):
+        """
+        Accepte (stem sans .json):
+          - dataset.mode.tT.repR.report
+          - dataset.tT.repR.report
+          - dataset.repR.report
+        Retourne (dataset, mode, threads, rep) en strings/None.
+        """
+        if stem.endswith(".report"):
+            stem = stem[:-7]
+
+        # dataset.mode.t{t}.rep{rep}
+        m = re.match(
+            r"^(?P<dataset>.+)\.(?P<mode>[^.]+)\.t(?P<t>\d+)\.rep(?P<rep>\d+)$",
+            stem,
         )
+        if m:
+            return m.group("dataset"), m.group("mode"), m.group("t"), m.group("rep")
+
+        # dataset.t{t}.rep{rep}
+        m = re.match(r"^(?P<dataset>.+)\.t(?P<t>\d+)\.rep(?P<rep>\d+)$", stem)
+        if m:
+            return m.group("dataset"), None, m.group("t"), m.group("rep")
+
+        # dataset.rep{rep}
+        m = re.match(r"^(?P<dataset>.+)\.rep(?P<rep>\d+)$", stem)
+        if m:
+            return m.group("dataset"), None, None, m.group("rep")
+
+        return None
 
     recs = []
     for prog_dir in prog_out.iterdir():
         if not prog_dir.is_dir():
             continue
-        program = prog_dir.name
-        if program not in {
-            "sbSPQR_gfa",
-            "sbSPQR_sb",
-            "sbSPQR_snarls_gfa",
-        }:
+
+        prog_dirname = prog_dir.name
+
+        if prog_dirname not in {"BubbleFinder", "sbSPQR_gfa", "sbSPQR_sb", "sbSPQR_snarls_gfa"}:
             continue
 
         for p in prog_dir.glob("*.report.json"):
-            parsed = _parse_report_name_to_dataset_replicate(p.stem)
+            parsed = _parse_run_stem(p.stem)
             if not parsed:
                 continue
-            dataset, rep = parsed
+
+            dataset, mode, t, rep = parsed
+
+            if t is not None:
+                dataset = f"{dataset}.t{t}"
+
+            program = prog_dirname
+            if prog_dirname == "BubbleFinder" and mode is not None:
+                program = f"BubbleFinder:{mode}"
 
             try:
                 with open(p, "r", encoding="utf-8") as fh:
@@ -1030,26 +1130,22 @@ def load_phase_metrics_from_results(results_root: Path) -> pd.DataFrame:
             except Exception:
                 continue
 
-            if program == "sbSPQR_snarls_gfa":
-                (
-                    io_s,
-                    build_s,
-                    logic_s,
-                    io_peak_kb,
-                    build_peak_kb,
-                    logic_peak_kb,
-                ) = _extract_phases_from_snarl_json(obj)
-            else:
-                (
-                    io_s,
-                    build_s,
-                    logic_s,
-                    io_peak_kb,
-                    build_peak_kb,
-                    logic_peak_kb,
-                ) = _extract_phases_from_sb_json(obj)
+            try:
+                is_snarl = (
+                    (prog_dirname == "sbSPQR_snarls_gfa")
+                    or (program.endswith(":snarls"))
+                    or (mode == "snarls")
+                )
 
-            elapsed_s, max_rss_kb = _extract_total_from_json(obj)
+                if is_snarl:
+                    io_s, build_s, logic_s, io_peak_kb, build_peak_kb, logic_peak_kb = _extract_phases_from_snarl_json(obj)
+                else:
+                    io_s, build_s, logic_s, io_peak_kb, build_peak_kb, logic_peak_kb = _extract_phases_from_sb_json(obj)
+
+                elapsed_s, max_rss_kb = _extract_total_from_json(obj)
+            except Exception:
+                # JSON pas au bon format => on skip
+                continue
 
             recs.append(
                 {
@@ -1071,28 +1167,11 @@ def load_phase_metrics_from_results(results_root: Path) -> pd.DataFrame:
             )
 
     if not recs:
-        return pd.DataFrame(
-            columns=[
-                "dataset",
-                "program",
-                "replicate",
-                "elapsed_s",
-                "max_rss_kb",
-                "timed_out",
-                "timeout_s",
-                "exit_status",
-                "io_s",
-                "build_s",
-                "logic_s",
-                "io_peak_kb",
-                "build_peak_kb",
-                "logic_peak_kb",
-            ]
-        )
+        return pd.DataFrame(columns=cols)
+
     df = pd.DataFrame(recs)
     df["replicate"] = df["replicate"].astype(str)
     return df
-
 
 def load_runs_from_bench_dir(results_root: Path) -> pd.DataFrame:
     bench_root = results_root / "bench"
@@ -1119,13 +1198,23 @@ def load_runs_from_bench_dir(results_root: Path) -> pd.DataFrame:
     for prog_dir in bench_root.iterdir():
         if not prog_dir.is_dir():
             continue
-        program = prog_dir.name
+
+        prog_dirname = prog_dir.name  
+
         for tsv in prog_dir.glob("*.tsv"):
-            parsed = _parse_bench_name_to_dataset_replicate(tsv.stem)
+            parsed = _parse_run_stem(tsv.stem)
             if not parsed:
                 continue
-            dataset, rep = parsed
+            dataset, mode, t, rep = parsed
+
+            if t is not None:
+                dataset = f"{dataset}.t{t}"
+
             kv = _parse_bench_kv_file_robust(tsv)
+
+            program = kv.get("Program") or prog_dirname
+            if program == "BubbleFinder" and mode is not None:
+                program = f"BubbleFinder:{mode}"
 
             el_raw = kv.get("Elapsed") or kv.get("Elapsed (wall clock) time")
             elapsed_s = parse_time_to_seconds(el_raw)
@@ -1168,9 +1257,7 @@ def load_runs_from_bench_dir(results_root: Path) -> pd.DataFrame:
                     else (0 if timed_out == 0 and pd.notna(elapsed_s) else np.nan)
                 )
             except Exception:
-                exit_status = (
-                    0 if timed_out == 0 and pd.notna(elapsed_s) else np.nan
-                )
+                exit_status = 0 if timed_out == 0 and pd.notna(elapsed_s) else np.nan
 
             recs.append(
                 {

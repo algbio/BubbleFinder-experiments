@@ -150,6 +150,12 @@ def raw_gfa_path(name):
         ext = "pggb"
     elif b == "vg_from_vcf":
         ext = "vg"
+    elif b == "gfa_from_url":
+        ext = "raw"
+    elif b == "vg_from_url":
+        ext = "vg.url"
+    elif b == "gbz_from_url":
+        ext = "gbz.url"
     else:
         ext = "raw"
     return os.path.join(root_dir(name), f"{name}.{ext}.gfa")
@@ -393,6 +399,8 @@ include: "modules/vg_from_vcf.smk"
 include: "modules/gfa_to_sgraph.smk"
 include: "modules/gfa_from_url.smk"
 include: "modules/pggb_from_fasta.smk"
+include: "modules/vg_from_url.smk"
+include: "modules/gbz_from_url.smk"
 
 
 if SPQR_BIN == SPQR_BIN_DEFAULT:
@@ -412,11 +420,11 @@ if SPQR_BIN == SPQR_BIN_DEFAULT:
 
             # Cloner explicitement dans build/BubbleFinder si absent
             if [ ! -d build/BubbleFinder ]; then
-              git clone https://github.com/algbio/BubbleFinder.git build/BubbleFinder
+            git clone https://github.com/algbio/BubbleFinder.git build/BubbleFinder
             fi
 
             cd build/BubbleFinder
- 
+
             git checkout 244f5ad1a9b258da454eeb5796c1d2e7985cb9aa
 
             mkdir -p build
@@ -440,8 +448,8 @@ if GET_BLUNTED == GET_BLUNTED_DEFAULT:
             mkdir -p "$(dirname {output})"
 
             curl -L \
-              "https://github.com/vgteam/GetBlunted/releases/download/v1.0.0/get_blunted" \
-              -o "{output}"
+            "https://github.com/vgteam/GetBlunted/releases/download/v1.0.0/get_blunted" \
+            -o "{output}"
 
             chmod +x "{output}"
             """
@@ -461,7 +469,7 @@ if CLSD_BIN == CLSD_BIN_DEFAULT:
 
             # Clone the repository if not already present
             if [ ! -d build/clsd ]; then
-              git clone https://github.com/Fabianexe/clsd.git build/clsd
+            git clone https://github.com/Fabianexe/clsd.git build/clsd
             fi
 
             cd build/clsd
@@ -473,13 +481,13 @@ if CLSD_BIN == CLSD_BIN_DEFAULT:
             # Autotools preparation
             echo "==> Running autoreconf -f -i"
             if ! autoreconf -f -i; then
-              echo "ERROR: autoreconf failed."
-              echo ""
-              echo "Please install autoconf and run again:"
-              echo "  sudo apt-get install autoconf"
-              echo "or (with conda):"
-              echo "  conda install -c conda-forge autoconf"
-              exit 1
+            echo "ERROR: autoreconf failed."
+            echo ""
+            echo "Please install autoconf and run again:"
+            echo "  sudo apt-get install autoconf"
+            echo "or (with conda):"
+            echo "  conda install -c conda-forge autoconf"
+            exit 1
             fi
 
             # Configure & build
@@ -1273,7 +1281,7 @@ rule clsd_prepare_edgelist:
         mkdir -p "$(dirname {output})" "$(dirname {log})"
         tmp="{output}.tmp.sgraph"
         python "{params.script}" "{input.gfa}" "$tmp" --map-out /dev/null {params.flags} \
-          2> >(tee -a "{log}" >&2)
+        2> >(tee -a "{log}" >&2)
         tail -n +2 "$tmp" > "{output}"
         rm -f "$tmp"
         """
@@ -1295,7 +1303,7 @@ rule sbspqr_prepare_sgraph:
         set -euo pipefail
         mkdir -p "$(dirname {output})" "$(dirname {log})"
         python "{params.script}" "{input.gfa}" "{output}" --map-out /dev/null {params.flags} \
-          2> >(tee -a "{log}" >&2)
+        2> >(tee -a "{log}" >&2)
         """
 
 # -----------------------------------------------------------------------------
@@ -1334,14 +1342,14 @@ rule bench_BubbleFinder:
         pre=rules.prechecks.output
     output:
         tsv=os.path.join(OUT_DIR, "bench", "BubbleFinder",
-                         "{dataset}.{mode}.t{t}.rep{rep}.tsv"),
+                        "{dataset}.{mode}.t{t}.rep{rep}.tsv"),
         prog=os.path.join(OUT_DIR, "prog_out", "BubbleFinder",
-                          "{dataset}.{mode}.t{t}.rep{rep}.out"),
+                        "{dataset}.{mode}.t{t}.rep{rep}.out"),
         report=os.path.join(OUT_DIR, "prog_out", "BubbleFinder",
                             "{dataset}.{mode}.t{t}.rep{rep}.report.json")
     log:
         os.path.join(OUT_DIR, "logs", "bench", "BubbleFinder",
-                     "{dataset}.{mode}.t{t}.rep{rep}.log")
+                    "{dataset}.{mode}.t{t}.rep{rep}.log")
     threads:
         lambda wc: int(wc.t)
     resources:
@@ -1399,16 +1407,16 @@ rule bench_vg_snarls_gfa:
             gfa={gfa}
             log={log}
             (
-              echo "=== vg debug prelude ==="
-              vg version || vg --version || true
-              echo "File: $gfa"
-              head -n1 "$gfa" || true
-              echo "#H-lines:"; grep -cE '^[H]([[:space:]]|$)' "$gfa" || true
-              echo "#W-lines:"; grep -cE '^[W]([[:space:]]|$)' "$gfa" || true
-              echo "#P-lines:"; grep -cE '^[P]([[:space:]]|$)' "$gfa" || true
-              echo "vg stats -F:"
-              vg stats -F "$gfa" || true
-              echo "=== end prelude ==="
+            echo "=== vg debug prelude ==="
+            vg version || vg --version || true
+            echo "File: $gfa"
+            head -n1 "$gfa" || true
+            echo "#H-lines:"; grep -cE '^[H]([[:space:]]|$)' "$gfa" || true
+            echo "#W-lines:"; grep -cE '^[W]([[:space:]]|$)' "$gfa" || true
+            echo "#P-lines:"; grep -cE '^[P]([[:space:]]|$)' "$gfa" || true
+            echo "vg stats -F:"
+            vg stats -F "$gfa" || true
+            echo "=== end prelude ==="
             ) >> "$log" 2>&1
         """.format(gfa=shlex.quote(input.gfa), log=shlex.quote(logfile)))
 
@@ -1498,30 +1506,30 @@ rule aggregate_and_plot:
         YML="{params.yml}"
 
         mkdir -p "$(dirname "{output.tsv}")" "$(dirname "{output.time_png}")" \
-                 "$(dirname "{output.rss_png}")" "$(dirname "{output.rerun}")"
+                "$(dirname "{output.rss_png}")" "$(dirname "{output.rerun}")"
 
         if command -v micromamba >/dev/null 2>&1; then
-          if [ ! -d "$ENV" ]; then
+        if [ ! -d "$ENV" ]; then
             micromamba create -y -p "$ENV" -f "$YML"
-          else
-            micromamba install -y -p "$ENV" -f "$YML" || micromamba update -y -p "$ENV" -f "$YML" || true
-          fi
-          RUN="micromamba run -p $ENV"
         else
-          if [ ! -d "$ENV" ]; then
+            micromamba install -y -p "$ENV" -f "$YML" || micromamba update -y -p "$ENV" -f "$YML" || true
+        fi
+        RUN="micromamba run -p $ENV"
+        else
+        if [ ! -d "$ENV" ]; then
             conda env create -p "$ENV" -f "$YML" || conda env update -p "$ENV" -f "$YML" --prune
-          else
+        else
             conda env update -p "$ENV" -f "$YML" --prune || true
-          fi
-          RUN="conda run -p $ENV"
+        fi
+        RUN="conda run -p $ENV"
         fi
 
         $RUN python scripts/aggregate_and_plot.py \
-          --inputs {input} \
-          --out-tsv {output.tsv} \
-          --time-png {output.time_png} \
-          --rss-png {output.rss_png} \
-          --rerun-tsv {output.rerun}
+        --inputs {input} \
+        --out-tsv {output.tsv} \
+        --time-png {output.time_png} \
+        --rss-png {output.rss_png} \
+        --rerun-tsv {output.rerun}
         """
 
 wildcard_constraints:

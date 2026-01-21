@@ -135,6 +135,36 @@ defaults:
     ggcat_force_f: false  # if true, rebuild a “SB” GFA via `ggcat -f` for SB programs
 
 datasets:
+  - name: hprc_v2_0_mc_grch38
+    enabled: true
+    builder: gfa_from_url
+    urls:
+      url: https://human-pangenomics.s3.amazonaws.com/pangenomes/freeze/release2/minigraph-cactus/hprc-v2.0-mc-grch38.gfa.gz
+    bench_programs:
+      - BubbleGun_gfa
+      - BubbleFinder
+      - vg_snarls_gfa
+
+  - name: hprc_v2_0_mc_grch38_chrX
+    enabled: true
+    builder: vg_from_url
+    urls:
+      url: https://human-pangenomics.s3.amazonaws.com/pangenomes/scratch/2025_02_28_minigraph_cactus/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/chrX.vg
+    bench_programs:
+      - BubbleGun_gfa
+      - BubbleFinder
+      - vg_snarls_gfa
+
+  - name: hprc_v1_1_mc_grch38
+    enabled: true
+    builder: gbz_from_url
+    urls:
+      url: https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/freeze1/minigraph-cactus/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.gbz
+    bench_programs:
+      - BubbleGun_gfa
+      - BubbleFinder
+      - vg_snarls_gfa
+
   # ---------------------------------------------------------------------------
   # pggb precomputed pangenome graphs from Zenodo .gfa.zst
   # ---------------------------------------------------------------------------

@@ -65,8 +65,14 @@ Each dataset has a `builder` field:
   - Input: `fa_gz` (reference) + `vcf_gz` → `vg construct` → GFA.
 - `gfa_from_url`  
   - Input: pre‑built GFA downloaded from a URL.
+- `vg_from_url`  
+  - Input: un fichier `.vg` téléchargé depuis une URL → `vg convert -g` → GFA.
+- `gbz_from_url`  
+  - Input: un fichier `.gbz` téléchargé depuis une URL → `vg convert -g` → GFA.
 - `pggb_from_fasta`  
   - Input: FASTA, graph built with [pggb](https://github.com/pangenome/pggb) (pangenome graphs).
+
+
 
 ### Enable / disable a dataset
 
@@ -153,7 +159,13 @@ snakemake --use-conda -j 8 results/benchmarks.tsv
 For each dataset `<name>` (e.g. `coli3682`):
 
 - `data/<name>/<name>.*.gfa`  
-  - Raw GFA (`...ggcat.fasta.gfa`, `...vg.gfa`, `...pggb.gfa`, etc.).
+  - Raw GFA (builder-dependent), e.g.:
+    - `...ggcat.fasta.gfa`
+    - `...vg.gfa`
+    - `...pggb.gfa`
+    - `...raw.gfa`       (builder: `gfa_from_url`)
+    - `...vg.url.gfa`    (builder: `vg_from_url`)
+    - `...gbz.url.gfa`   (builder: `gbz_from_url`)
 - `data/<name>/<name>.bluntified.gfa` (temporary).
 - `data/<name>/<name>.cleaned.gfa`  
   - Cleaned GFA (no H‑lines, bluntified).
@@ -163,7 +175,7 @@ For each dataset `<name>` (e.g. `coli3682`):
   - sgraph used by BubbleFinder/sbSPQR (unidirectional graph representation mode).
 - `data/<name>/<name>.clsd.edgelist`  
   - Edgelist for `clsd`.
-
+  
 ### `results/` directory
 
 - `results/.prechecks.ok`  

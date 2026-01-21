@@ -425,7 +425,7 @@ if SPQR_BIN == SPQR_BIN_DEFAULT:
 
             cd build/BubbleFinder
 
-            git checkout 244f5ad1a9b258da454eeb5796c1d2e7985cb9aa
+            git checkout 302de4f06c60fe96856a0da46439152a99c8d053
 
             mkdir -p build
             cd build

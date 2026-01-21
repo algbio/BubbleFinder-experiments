@@ -20,7 +20,7 @@ This repository contains a Snakemake pipeline that:
 
 The following tools are managed automatically by the Snakefile if no binary is specified in `datasets.yaml`:
 
-- [BubbleFinder](https://github.com/algbio/BubbleFinder/tree/6ba16c9527bbde295a3234b717c594d0178e3cd3), cloned and built from GitHub (commit `6ba16c95`).
+- [BubbleFinder](https://github.com/algbio/BubbleFinder/tree/302de4f06c60fe96856a0da46439152a99c8d053), cloned and built from GitHub (commit `302de4f0`).
 - [GetBlunted](https://github.com/vgteam/GetBlunted/releases/tag/v1.0.0), precompiled binary downloaded (release `v1.0.0`).
 - [clsd](https://github.com/Fabianexe/clsd/tree/c49598fcb149b2c224a4625e0bf4b870f27ec166), cloned and built (commit `c49598fc`).
 - [Lighter](https://github.com/mourisl/Lighter/tree/d8621db12352895662404b38a4b61862eaf60f6a), cloned and built (commit `d8621db1`).

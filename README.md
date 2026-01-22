@@ -1,12 +1,34 @@
-# Snakemake Pipeline for BubbleFinder 
+# Snakemake Pipeline for BubbleFinder
 
-This repository contains a Snakemake pipeline that:
+This repository contains a Snakemake pipeline that **can** (depending on the requested Snakemake targets and on the configuration in `datasets.yaml`):
 
-- Builds graphs (GFA) from FASTA, FASTQ (ggcat+Lighter), VCF (vg), or pre‑existing GFAs.
-- Cleans and "bluntifies" the graphs.
-- Prepares unidirectional graph representations (sgraph / edgelist).
-- Runs benchmarks on several programs (BubbleGun, BubbleFinder, vg snarls, clsd).
-- Aggregates results in a single table and produces plots (time / memory).
+- Build graphs (GFA) from FASTA, FASTQ (ggcat+Lighter), VCF (vg), or pre‑existing GFAs.
+- Clean and "bluntify" the graphs.
+- Prepare unidirectional graph representations (sgraph / edgelist), when required by the selected benchmark programs / inputs.
+- Run benchmarks on several programs (BubbleGun, BubbleFinder (superbubbles / snarls / ultrabubbles), vg snarls, clsd).
+- Aggregate results in a single table and produce plots (time / memory).
+
+Running the default target `all` (`snakemake all ...`) triggers the workflow needed to produce the aggregated table and plots for all enabled datasets and selected benchmark programs.
+
+**Note:** steps (build / clean / conversions / benchmarks) run only if required by the requested Snakemake targets and by `datasets.yaml`. In particular, any benchmark/aggregation target (e.g. `results/benchmarks.tsv` or `all`) will build `data/<dataset>/<dataset>.cleaned.gfa` for the datasets being benchmarked.
+
+---
+
+## Table of contents
+
+- [1. Requirements](#1-requirements)
+- [2. Setup](#2-setup)
+- [3. Dataset configuration (`datasets.yaml`)](#3-dataset-configuration-datasetsyaml)
+  - [3.1 Available builders](#31-available-builders)
+  - [3.2 Enable / disable a dataset](#32-enable--disable-a-dataset)
+  - [3.3 Choosing benchmark programs](#33-choosing-benchmark-programs)
+  - [3.4 BubbleFinder: modes and inputs (including ultrabubbles)](#34-bubblefinder-modes-and-inputs-including-ultrabubbles)
+  - [3.5 When are sgraph / edgelist produced?](#35-when-are-sgraph--edgelist-produced)
+  - [3.6 Threads configuration (build + benchmarks)](#36-threads-configuration-build--benchmarks)
+- [4. Running the pipeline](#4-running-the-pipeline)
+- [5. Output structure](#5-output-structure)
+- [6. Customizing tool binaries](#6-customizing-tool-binaries)
+- [7. Quick troubleshooting](#7-quick-troubleshooting)
 
 ---
 
@@ -52,13 +74,12 @@ The `datasets.yaml` file describes:
 - tools and conda environments,
 - benchmark programs and their parameters.
 
-### Available builders
+### 3.1 Available builders
 
 Each dataset has a `builder` field:
 
 - `ggcat_from_fasta`  
-  - Input: FASTA/FNA (or `.tar.gz` archive containing FASTA files).  
-  - Example: `coli3682` (from Zenodo).
+  - Input: FASTA/FNA (or `.tar.gz` archive containing FASTA files).
 - `ggcat_from_reads_lighter`  
   - Input: FASTQ(.gz) → Lighter correction → ggcat.
 - `vg_from_vcf`  
@@ -66,15 +87,13 @@ Each dataset has a `builder` field:
 - `gfa_from_url`  
   - Input: pre‑built GFA downloaded from a URL.
 - `vg_from_url`  
-  - Input: un fichier `.vg` téléchargé depuis une URL → `vg convert -g` → GFA.
+  - Input: a `.vg` file downloaded from a URL → `vg convert -g` → GFA.
 - `gbz_from_url`  
-  - Input: un fichier `.gbz` téléchargé depuis une URL → `vg convert -g` → GFA.
+  - Input: a `.gbz` file downloaded from a URL → `vg convert -g` → GFA.
 - `pggb_from_fasta`  
-  - Input: FASTA, graph built with [pggb](https://github.com/pangenome/pggb) (pangenome graphs).
+  - Input: FASTA, graph built with [pggb](https://github.com/pangenome/pggb).
 
-
-
-### Enable / disable a dataset
+### 3.2 Enable / disable a dataset
 
 Under `datasets:`:
 
@@ -87,35 +106,178 @@ Under `datasets:`:
 
 - `enabled: true` → used.
 - `enabled: false` → ignored.
-- `enabled: auto` → enabled only if input files can be detected (useful for HG00733, etc.).
+- `enabled: auto` → enabled only if input files can be detected (useful for datasets discovered from an index page).
 
-### Choosing benchmark programs
+### 3.3 Choosing benchmark programs
 
-Global (in `defaults.bench.programs`):
+Benchmark programs are selected:
+
+- globally via `defaults.bench.programs`, and/or
+- per dataset via `datasets: ... bench_programs:`
+
+Global example:
 
 ```yaml
 defaults:
   bench:
     reps: 2
     programs:
-      - BubbleGun_gfa // => BubbleGun, with a .GFA file as input
-      - sbSPQR_gfa // => BubbleFinder, bidirectional edges
-      - vg_snarls_gfa // => vg snarls, with a .GFA file as input
-      - clsd_sb // => clsd only handles unidirectional edges
-      - sbSPQR_sb // => BubbleFinder, unidirectional edges
-      - sbSPQR_snarls_gfa // => BubbleFinder, snarls mode
+      - BubbleGun_gfa
+      - BubbleFinder
+      - vg_snarls_gfa
+      - clsd_sb
 ```
 
-Per dataset (overrides the global value):
+Per dataset override example:
 
 ```yaml
-- name: coli3682
+- name: ecoli50
   ...
   bench_programs:
-    - clsd_sb
+    - BubbleFinder
+    - vg_snarls_gfa
 ```
 
-See the comments in `datasets.yaml` for the full list of programs and options.
+#### Repetitions (`reps`)
+
+The number of benchmark repetitions is controlled by `defaults.bench.reps`.  
+For each dataset, for each selected program (and for each configured thread count), the pipeline runs `rep = 1..reps` and writes one TSV per repetition.
+
+A TSV file is a plain-text **T**ab-**S**eparated **V**alues file (fields separated by tab characters); in this pipeline, benchmark TSVs are small key/value tables storing time/memory/exit status and some metadata (program, threads, etc.).
+
+Example:
+
+```yaml
+defaults:
+  bench:
+    reps: 2
+```
+
+### 3.4 BubbleFinder: modes and inputs
+
+The pipeline benchmarks BubbleFinder via the program name `BubbleFinder`. BubbleFinder runs in one or more **modes**, configured in `datasets.yaml`.
+
+Modes supported here (BubbleFinder commands):
+
+- `superbubbles`
+- `snarls`
+- `ultrabubbles`
+
+Mode selection is controlled by:
+
+- `defaults.bench.program_opts.BubbleFinder.modes` (global), and/or
+- per-dataset overrides under `datasets: ... bench: program_opts: BubbleFinder: ...`
+
+Global example (run multiple modes):
+
+```yaml
+defaults:
+  bench:
+    program_opts:
+      BubbleFinder:
+        modes: ["superbubbles", "snarls", "ultrabubbles"]
+```
+
+Per-dataset example (run only ultrabubbles on one dataset):
+
+```yaml
+- name: ecoli50
+  ...
+  bench_programs:
+    - BubbleFinder
+  bench:
+    program_opts:
+      BubbleFinder:
+        modes: ["ultrabubbles"]
+```
+
+BubbleFinder input type is configured per mode with `input:`:
+
+- `input: "gfa"` → BubbleFinder reads `data/<dataset>/<dataset>.cleaned.gfa`
+- `input: "sgraph"` → BubbleFinder reads `data/<dataset>/<dataset>.sbspqr.sgraph` (built from a cleaned GFA)
+
+Example (run BubbleFinder ultrabubbles, using GFA input):
+
+```yaml
+defaults:
+  bench:
+    program_opts:
+      BubbleFinder:
+        modes: ["ultrabubbles"]
+        default:
+          input: "gfa"
+```
+
+Note: dataset names do not control BubbleFinder modes; only the `modes:` field does.  
+Also, BubbleFinder’s `ultrabubbles` mode requires **at least one tip per connected component** in the input graph (BubbleFinder requirement).
+
+### 3.5 When are sgraph / edgelist produced?
+
+These derived representations are built only if required by the selected benchmark programs / inputs:
+
+- **clsd (`clsd_sb`)** uses an **edgelist**: `data/<dataset>/<dataset>.clsd.edgelist` (generated from a cleaned GFA).
+- **BubbleFinder** uses **sgraph** only when `BubbleFinder` is configured with `input: "sgraph"`.
+
+### 3.6 Threads configuration (build + benchmarks)
+
+There are two distinct “thread” concepts:
+
+- `snakemake -j <N>` controls **how many rules run in parallel** (workflow-level parallelism).
+- Program-specific thread counts control **how many threads a tool uses** inside one rule.
+
+#### Builder threads (graph construction)
+
+Builder thread defaults are set under `defaults.threads`, e.g.:
+
+```yaml
+defaults:
+  threads:
+    ggcat: 8
+    vg: 16
+    lighter: 8
+    pggb: 4
+```
+
+#### Benchmark threads (per program)
+
+For benchmarks, thread values can be configured:
+
+- globally per program via `defaults.bench.threads_by_program`, and/or
+- per dataset via `datasets: ... bench_threads:`
+
+Global example:
+
+```yaml
+defaults:
+  bench:
+    threads_by_program:
+      BubbleFinder: [1, 4, 8, 16]
+      vg_snarls_gfa: [1, 4, 8, 16]
+```
+
+Per-dataset override example:
+
+```yaml
+- name: ecoli50
+  ...
+  bench_threads:
+    vg_snarls_gfa: [1, 8]
+```
+
+BubbleFinder thread values can also be set per mode via `program_opts`:
+
+```yaml
+defaults:
+  bench:
+    program_opts:
+      BubbleFinder:
+        modes: ["superbubbles", "ultrabubbles"]
+        by_mode:
+          superbubbles:
+            threads: [1, 2, 4, 8]
+          ultrabubbles:
+            threads: [1, 4, 8, 16]
+```
 
 ---
 
@@ -134,7 +296,7 @@ snakemake all --use-conda -j 8
 ```
 
 - `--use-conda`: required to create/use the environments defined in `config/*.yml`.
-- `-j 8`: number of parallel jobs (adapt to your machine / cluster).
+- `-j 8`: number of parallel jobs.
 
 ### Targeted examples
 
@@ -144,7 +306,7 @@ snakemake all --use-conda -j 8
 snakemake --use-conda -j 4 data/coli3682/coli3682.cleaned.gfa
 ```
 
-- Run only the benchmarks and aggregation:
+- Run benchmarks + aggregation (this also produces the plots because they are generated by the same rule in this workflow):
 
 ```bash
 snakemake --use-conda -j 8 results/benchmarks.tsv
@@ -156,7 +318,7 @@ snakemake --use-conda -j 8 results/benchmarks.tsv
 
 ### `data/` directory
 
-For each dataset `<name>` (e.g. `coli3682`):
+For each dataset `<name>`:
 
 - `data/<name>/<name>.*.gfa`  
   - Raw GFA (builder-dependent), e.g.:
@@ -170,25 +332,26 @@ For each dataset `<name>` (e.g. `coli3682`):
 - `data/<name>/<name>.cleaned.gfa`  
   - Cleaned GFA (no H‑lines, bluntified).
 - `data/<name>/<name>.sb.cleaned.gfa`  
-  - unidirectional graph representation version (if `ggcat_force_f` is enabled for this dataset).
+  - Cleaned GFA produced by the optional ggcat `-f` rebuild (when enabled for SB programs on ggcat-based datasets).
 - `data/<name>/<name>.sbspqr.sgraph`  
-  - sgraph used by BubbleFinder/sbSPQR (unidirectional graph representation mode).
+  - sgraph for BubbleFinder when configured with `input: "sgraph"`.
 - `data/<name>/<name>.clsd.edgelist`  
   - Edgelist for `clsd`.
-  
+
 ### `results/` directory
 
 - `results/.prechecks.ok`  
   - Marker indicating that prechecks have run.
 - `results/bench/`  
-  - Per‑program, per‑dataset, per‑rep benchmark TSV files.  
-  - Name: `<program>/<dataset>.t<threads>.rep<rep>.tsv`.
+  - Per‑program, per‑dataset, per‑rep benchmark TSV files.
+  - For BubbleFinder, file names include the mode:
+    - `BubbleFinder/<dataset>.<mode>.t<threads>.rep<rep>.tsv`
 - `results/prog_out/`  
-  - Raw program outputs (JSON, sgraphs, program‑specific logs).
+  - Raw program outputs (BubbleFinder outputs + BubbleFinder JSON report, etc.).
 - `results/logs/`  
-  - Detailed logs per step (ggcat, vg, sgraph, bench, etc.).
+  - Detailed logs per step.
 - `results/benchmarks.tsv`  
-  - Aggregated benchmark table (time, memory, signature, etc.).
+  - Aggregated benchmark table.
 - `results/plots/`  
   - `time_by_dataset_program.png`
   - `rss_by_dataset_program.png`
@@ -219,14 +382,14 @@ If these paths are not set, the Snakefile will:
 
 ## 7. Quick troubleshooting
 
-- Error in prechecks (`prechecks`):  
+- Error in prechecks (`prechecks`):
   - Check `results/logs/*` (especially `results/logs/bench`, `results/logs/ggcat`, `results/logs/vg`).
   - Ensure `conda` or `mamba` is available.
-- Frequent timeouts: 
+- Frequent timeouts:
   - Adjust `defaults.tools.timeout.seconds` in `datasets.yaml`.
 - Problem with a specific dataset:
-  - Run a single target, e.g.:  
+  - Run a single target, e.g.  
     `snakemake --use-conda -j 4 data/coli3682/coli3682.cleaned.gfa`
 - Bluntification issues:
-  - A WARN about `get_blunted` means the pipeline falls back to "naive bluntify" (overlap fields forced to `*`).  
-  - Install GetBlunted and set `defaults.tools.get_blunted` for more better behavior.
+  - A WARN about `get_blunted` means the pipeline falls back to "naive bluntify" (overlap fields forced to `*`).
+  - Install GetBlunted and set `defaults.tools.get_blunted` to use it.

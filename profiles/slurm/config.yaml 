@@ -1,3 +1,6 @@
+# runtime values are in minutes
+
+
 executor: slurm
 latency-wait: 60
 default-resources:
@@ -29,43 +32,60 @@ set-resources:
     cpus_per_task: 1
 
   run_vg_gfa_T:
-    runtime: 1440
+    runtime: 135
     mem_mb: 180000
     cpus_per_task: 2
   run_vg_gfa_noT:
-    runtime: 1440
+    runtime: 135
     mem_mb: 180000
     cpus_per_task: 2
 
   run_bf_gfa_T:
-    runtime: 720
+    runtime: 135
     mem_mb: 180000
     cpus_per_task: 2
   run_bf_gfa_noT:
-    runtime: 720
+    runtime: 135
     mem_mb: 180000
     cpus_per_task: 2
 
   run_bf_sb_gfa_T:
-    runtime: 720
+    runtime: 135
     mem_mb: 180000
     cpus_per_task: 2
   run_bf_sb_gfa_noT:
-    runtime: 720
+    runtime: 135
     mem_mb: 180000
     cpus_per_task: 2
 
   run_bubblegun:
-    runtime: 1440
+    runtime: 135
     mem_mb: 180000
     cpus_per_task: 2
 
   run_billi:
-    runtime: 720
+    runtime: 135
     mem_mb: 100000
     cpus_per_task: 2
 
   run_gfa_stats:
-    runtime: 240
+    runtime: 45
     mem_mb: 500000
     cpus_per_task: 1
+
+  run_vg_gbz_T:
+    runtime: 135
+    mem_mb: 180000
+    cpus_per_task: 2
+  run_vg_gbz_noT:
+    runtime: 135
+    mem_mb: 180000
+    cpus_per_task: 2
+  run_bf_gbz_T:
+    runtime: 135
+    mem_mb: 180000
+    cpus_per_task: 2
+  run_bf_gbz_noT:
+    runtime: 135
+    mem_mb: 180000
+    cpus_per_task: 2

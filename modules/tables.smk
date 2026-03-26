@@ -1,14 +1,26 @@
 import os
 from pathlib import Path
 
+configfile: "config/benchmarks.yaml"
+
 RESULTS_DIR = config.get("results_dir", "results")
 TIME_BIN = config.get("time_bin", "/usr/bin/time")
 BF_STACK = config.get("bf_stack", 483183820800)
-TIMEOUT_H = config.get("timeout_hours", 4)
-TIMEOUT_SEC = TIMEOUT_H * 3600
 ZENODO_RECORD = config.get("zenodo_record", "19209715")
 DATA_DIR = config.get("data_dir", "data")
 TABLES_DIR = config.get("tables_dir", "tables")
+
+_TIMEOUT_DEFAULT_H = float(config.get("timeout_default_hours",
+                            config.get("timeout_hours", 2)))
+_TIMEOUT_PER_PROG  = config.get("timeout_per_program", {}) or {}
+
+def timeout_sec(program):
+    h = float(_TIMEOUT_PER_PROG.get(program, _TIMEOUT_DEFAULT_H))
+    return int(h * 3600)
+
+TIMEOUT_H   = _TIMEOUT_DEFAULT_H
+TIMEOUT_SEC = int(TIMEOUT_H * 3600)
+BENCH_WRAPPER = "scripts/run_bench.sh"
 
 localrules: download_zenodo, download_hprc, download_all, tables_only, generate_tables, clone_bubblefinder, clone_billi, install_vg, install_bubblegun
 
@@ -67,7 +79,9 @@ TOOL_VARIANTS = [
     "vg_gfa_T", "vg_gfa_noT",
     "bf_gfa_T", "bf_gfa_noT",
     "bf_sb_gfa_T", "bf_sb_gfa_noT",
-    "bubblegun", "billi", "gfa_stats",
+    "bubblegun", "billi", "gfa_stats", "vg_stats",
+    "vg_gbz_T", "vg_gbz_noT",
+    "bf_gbz_T", "bf_gbz_noT",
 ]
 
 
@@ -83,10 +97,27 @@ def find_gfa(ds):
             return gz[:-3]  # strip .gz → will exist after decompression
     return None
 
+def find_gbz(ds):
+    for d in GFA_DIRS:
+        p = os.path.join(d, ds + ".gbz")
+        if os.path.isfile(p):
+            return p
+    return None
+
 def gfa_fmt(_path):
     return "gfa"
 
 def result_files_for(ds, tool):
+    R = RESULTS_DIR
+    if tool in ("vg_gbz_T", "vg_gbz_noT", "bf_gbz_T", "bf_gbz_noT"):
+        if find_gbz(ds) is None:
+            return []
+        return {
+            "vg_gbz_T":   [f"{R}/{ds}.vg_gbz.time"],
+            "vg_gbz_noT": [f"{R}/{ds}.vg_gbz_noT.time"],
+            "bf_gbz_T":   [f"{R}/{ds}.bf_gbz.time"],
+            "bf_gbz_noT": [f"{R}/{ds}.bf_gbz_noT.time"],
+        }.get(tool, [])
     gfa = find_gfa(ds)
     if gfa is None:
         return []
@@ -102,6 +133,7 @@ def result_files_for(ds, tool):
         "bubblegun":   [f"{R}/{ds}.bubblegun.time"],
         "billi":     [f"{R}/{ds}.billi.time"],
         "gfa_stats":  [f"{R}/{ds}.gfa_stats"],
+        "vg_stats":   [f"{R}/{ds}.vg_stats"],
     }
     return mapping.get(tool, [])
 
@@ -148,7 +180,12 @@ rule build_bubblefinder:
         set -euo pipefail
         cd {params.srcdir}
         mkdir -p build && cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUBBLEFINDER_HAS_GBZ=OFF
+        CMAKE_EXTRA=""
+        if [ -n "${{CONDA_PREFIX:-}}" ] && [ -f "$CONDA_PREFIX/include/zstd.h" ]; then
+            CMAKE_EXTRA="-DCMAKE_PREFIX_PATH=$CONDA_PREFIX"
+        fi
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUBBLEFINDER_HAS_GBZ=OFF \
+            -DSB_NATIVE_OPTIMIZATIONS=OFF $CMAKE_EXTRA
         make -j$(nproc)
         echo "BubbleFinder built at commit $(git -C .. rev-parse --short HEAD)"
         """
@@ -384,15 +421,14 @@ rule run_vg_gfa_T:
     params:
         gfa=lambda wc: find_gfa(wc.ds),
         R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("vg_gfa_T"),
     shell:
         """
         set -euo pipefail
-        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz"
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
         ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
-        {TIME_BIN} -v -o "$R/$ds.vg_gfa.$fmt.time" \
-            timeout {TIMEOUT_SEC}s {input.bin} snarls -T -A integrated -t 1 "{params.gfa}" \
-            > "$R/$ds.vg_gfa.$fmt.snarls.pb" \
-            2> "$R/$ds.vg_gfa.$fmt.log" || true
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} snarls -T -A integrated -t 1 {params.gfa} > $R/$ds.vg_gfa.$fmt.snarls.pb 2> $R/$ds.vg_gfa.$fmt.log"
         if [ -s "$R/$ds.vg_gfa.$fmt.snarls.pb" ]; then
             {input.bin} view -R -j "$R/$ds.vg_gfa.$fmt.snarls.pb" 2>/dev/null | python3 -c "
 import sys, json
@@ -417,15 +453,14 @@ rule run_vg_gfa_noT:
     params:
         gfa=lambda wc: find_gfa(wc.ds),
         R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("vg_gfa_noT"),
     shell:
         """
         set -euo pipefail
-        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz"
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
         ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
-        {TIME_BIN} -v -o "$R/$ds.vg_gfa_noT.$fmt.time" \
-            timeout {TIMEOUT_SEC}s {input.bin} snarls -A integrated -t 1 "{params.gfa}" \
-            > "$R/$ds.vg_gfa_noT.$fmt.snarls.pb" \
-            2> "$R/$ds.vg_gfa_noT.$fmt.log" || true
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} snarls -A integrated -t 1 {params.gfa} > $R/$ds.vg_gfa_noT.$fmt.snarls.pb 2> $R/$ds.vg_gfa_noT.$fmt.log"
         if [ -s "$R/$ds.vg_gfa_noT.$fmt.snarls.pb" ]; then
             {input.bin} view -R -j "$R/$ds.vg_gfa_noT.$fmt.snarls.pb" 2>/dev/null | python3 -c "
 import sys, json
@@ -450,15 +485,14 @@ rule run_bf_gfa_T:
     params:
         gfa=lambda wc: find_gfa(wc.ds),
         R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_gfa_T"),
     shell:
         """
         set -euo pipefail
-        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz"
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
         ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
-        {TIME_BIN} -v -o "$R/$ds.bf_gfa.$fmt.time" \
-            timeout {TIMEOUT_SEC}s {input.bin} ultrabubbles -T -g "{params.gfa}" \
-            -o "$R/$ds.bf_gfa.$fmt.txt" -j 1 -m {BF_STACK} \
-            > "$R/$ds.bf_gfa.$fmt.log" 2>&1 || true
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles -T -g {params.gfa} -o $R/$ds.bf_gfa.$fmt.txt -j 1 -m {BF_STACK} > $R/$ds.bf_gfa.$fmt.log 2>&1"
         """
 
 rule run_bf_gfa_noT:
@@ -469,15 +503,14 @@ rule run_bf_gfa_noT:
     params:
         gfa=lambda wc: find_gfa(wc.ds),
         R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_gfa_noT"),
     shell:
         """
         set -euo pipefail
-        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz"
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
         ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
-        {TIME_BIN} -v -o "$R/$ds.bf_gfa_noT.$fmt.time" \
-            timeout {TIMEOUT_SEC}s {input.bin} ultrabubbles -g "{params.gfa}" \
-            -o "$R/$ds.bf_gfa_noT.$fmt.txt" -j 1 -m {BF_STACK} \
-            > "$R/$ds.bf_gfa_noT.$fmt.log" 2>&1 || true
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles -g {params.gfa} -o $R/$ds.bf_gfa_noT.$fmt.txt -j 1 -m {BF_STACK} > $R/$ds.bf_gfa_noT.$fmt.log 2>&1"
         """
 
 rule run_bf_sb_gfa_T:
@@ -488,15 +521,14 @@ rule run_bf_sb_gfa_T:
     params:
         gfa=lambda wc: find_gfa(wc.ds),
         R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_sb_gfa_T"),
     shell:
         """
         set -euo pipefail
-        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz"
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
         ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
-        {TIME_BIN} -v -o "$R/$ds.bf_sb_gfa.$fmt.time" \
-            timeout {TIMEOUT_SEC}s {input.bin} ultrabubbles --doubled -T -g "{params.gfa}" \
-            -o "$R/$ds.bf_sb_gfa.$fmt.txt" -j 1 -m {BF_STACK} \
-            > "$R/$ds.bf_sb_gfa.$fmt.log" 2>&1 || true
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles --doubled -T -g {params.gfa} -o $R/$ds.bf_sb_gfa.$fmt.txt -j 1 -m {BF_STACK} > $R/$ds.bf_sb_gfa.$fmt.log 2>&1"
         """
 
 rule run_bf_sb_gfa_noT:
@@ -507,15 +539,14 @@ rule run_bf_sb_gfa_noT:
     params:
         gfa=lambda wc: find_gfa(wc.ds),
         R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_sb_gfa_noT"),
     shell:
         """
         set -euo pipefail
-        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz"
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
         ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
-        {TIME_BIN} -v -o "$R/$ds.bf_sb_gfa_noT.$fmt.time" \
-            timeout {TIMEOUT_SEC}s {input.bin} ultrabubbles --doubled -g "{params.gfa}" \
-            -o "$R/$ds.bf_sb_gfa_noT.$fmt.txt" -j 1 -m {BF_STACK} \
-            > "$R/$ds.bf_sb_gfa_noT.$fmt.log" 2>&1 || true
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles --doubled -g {params.gfa} -o $R/$ds.bf_sb_gfa_noT.$fmt.txt -j 1 -m {BF_STACK} > $R/$ds.bf_sb_gfa_noT.$fmt.log 2>&1"
         """
 
 rule run_bubblegun:
@@ -526,15 +557,14 @@ rule run_bubblegun:
     params:
         gfa=lambda wc: find_gfa(wc.ds),
         R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bubblegun"),
     shell:
         """
         set -euo pipefail
-        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz"
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
         ds="{wildcards.ds}"; R="{params.R}"
-        {TIME_BIN} -v -o "$R/$ds.bubblegun.time" \
-            timeout {TIMEOUT_SEC}s BubbleGun -g "{params.gfa}" bchains \
-            --bubble_json "$R/$ds.bubblegun.json" \
-            > "$R/$ds.bubblegun.log" 2>&1 || true
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "BubbleGun -g {params.gfa} bchains --bubble_json $R/$ds.bubblegun.json > $R/$ds.bubblegun.log 2>&1"
         if [ -s "$R/$ds.bubblegun.json" ]; then
             python3 -c "
 import json
@@ -560,14 +590,14 @@ rule run_billi:
     params:
         gfa=lambda wc: find_gfa(wc.ds),
         R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("billi"),
     shell:
         """
         set -euo pipefail
-        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz"
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
         ds="{wildcards.ds}"; R="{params.R}"
-        {TIME_BIN} -v -o "$R/$ds.billi.time" \
-            timeout {TIMEOUT_SEC}s {input.bin} decompose -i "{params.gfa}" \
-            > "$R/$ds.billi.log" 2>&1 || true
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} decompose -i {params.gfa} > $R/$ds.billi.log 2>&1"
         grep '^[PH] ' "$R/$ds.billi.log" > "$R/$ds.billi.txt" 2>/dev/null || true
         n=$(grep -oP 'Total panbubbles found: \\K\\d+' "$R/$ds.billi.log" 2>/dev/null || echo "")
         [ -n "$n" ] && echo -e "n_panbubbles\t$n" > "$R/$ds.billi.counts" || true
@@ -580,9 +610,128 @@ rule run_gfa_stats:
         stats=os.path.join(RESULTS_DIR, "{ds}.gfa_stats"),
     params:
         gfa=lambda wc: find_gfa(wc.ds),
+        tsec=lambda wc: timeout_sec("gfa_stats"),
     shell:
         """
         set -euo pipefail
-        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz"
-        {input.bin} "{params.gfa}" > {output.stats} 2>/dev/null || true
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        TMP="{output.stats}.tmp"
+        rm -f "$TMP"
+        timeout {params.tsec}s {input.bin} "{params.gfa}" > "$TMP" 2>/dev/null
+        mv "$TMP" {output.stats}
+        """
+
+rule compute_vg_stats:
+    input:
+        bin=VG_BIN,
+    output:
+        stats=os.path.join(RESULTS_DIR, "{ds}.vg_stats"),
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        tsec=lambda wc: timeout_sec("gfa_stats"),
+    shell:
+        """
+        set -euo pipefail
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        TMP="{output.stats}.tmp"
+        rm -f "$TMP"
+        timeout {params.tsec}s {input.bin} stats -N -E "{params.gfa}" 2>/dev/null \
+            | paste <(printf "nodes\\nedges") - > "$TMP"
+        mv "$TMP" {output.stats}
+        """
+
+rule run_vg_gbz_T:
+    input:
+        bin=VG_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.vg_gbz.time"),
+    params:
+        gbz=lambda wc: find_gbz(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("vg_gbz_T"),
+    shell:
+        """
+        set -euo pipefail
+        ds="{wildcards.ds}"; R="{params.R}"
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} snarls -T -A integrated -t 1 {params.gbz} > $R/$ds.vg_gbz.snarls.pb 2> $R/$ds.vg_gbz.log"
+        if [ -s "$R/$ds.vg_gbz.snarls.pb" ]; then
+            {input.bin} view -R -j "$R/$ds.vg_gbz.snarls.pb" 2>/dev/null | python3 -c "
+import sys, json
+n_snarls = n_ub = 0
+for line in sys.stdin:
+    obj = json.loads(line)
+    n_snarls += 1
+    if obj.get('type') == 1: n_ub += 1
+print(f'n_snarls\t{{n_snarls}}')
+print(f'n_ub\t{{n_ub}}')
+print(f'n_diff\t{{n_snarls - n_ub}}')
+" > "$R/$ds.vg_gbz.snarl_counts" 2>/dev/null || true
+            grep 'n_ub' "$R/$ds.vg_gbz.snarl_counts" > "$R/$ds.vg_gbz.ub" 2>/dev/null || true
+        fi
+        """
+
+rule run_vg_gbz_noT:
+    input:
+        bin=VG_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.vg_gbz_noT.time"),
+    params:
+        gbz=lambda wc: find_gbz(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("vg_gbz_noT"),
+    shell:
+        """
+        set -euo pipefail
+        ds="{wildcards.ds}"; R="{params.R}"
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} snarls -A integrated -t 1 {params.gbz} > $R/$ds.vg_gbz_noT.snarls.pb 2> $R/$ds.vg_gbz_noT.log"
+        if [ -s "$R/$ds.vg_gbz_noT.snarls.pb" ]; then
+            {input.bin} view -R -j "$R/$ds.vg_gbz_noT.snarls.pb" 2>/dev/null | python3 -c "
+import sys, json
+n_snarls = n_ub = 0
+for line in sys.stdin:
+    obj = json.loads(line)
+    n_snarls += 1
+    if obj.get('type') == 1: n_ub += 1
+print(f'n_snarls\t{{n_snarls}}')
+print(f'n_ub\t{{n_ub}}')
+print(f'n_diff\t{{n_snarls - n_ub}}')
+" > "$R/$ds.vg_gbz_noT.snarl_counts" 2>/dev/null || true
+            grep 'n_ub' "$R/$ds.vg_gbz_noT.snarl_counts" > "$R/$ds.vg_gbz_noT.ub" 2>/dev/null || true
+        fi
+        """
+
+rule run_bf_gbz_T:
+    input:
+        bin=BF_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.bf_gbz.time"),
+    params:
+        gbz=lambda wc: find_gbz(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_gbz_T"),
+    shell:
+        """
+        set -euo pipefail
+        ds="{wildcards.ds}"; R="{params.R}"
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles -T -g {params.gbz} -o $R/$ds.bf_gbz.txt -j 1 -m {BF_STACK} > $R/$ds.bf_gbz.log 2>&1"
+        """
+
+rule run_bf_gbz_noT:
+    input:
+        bin=BF_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.bf_gbz_noT.time"),
+    params:
+        gbz=lambda wc: find_gbz(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_gbz_noT"),
+    shell:
+        """
+        set -euo pipefail
+        ds="{wildcards.ds}"; R="{params.R}"
+        bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles -g {params.gbz} -o $R/$ds.bf_gbz_noT.txt -j 1 -m {BF_STACK} > $R/$ds.bf_gbz_noT.log 2>&1"
         """

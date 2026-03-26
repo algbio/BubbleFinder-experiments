@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
         -j[0-9]*)
             JOBS="${1#-j}"; shift ;;
         -h|--help)
-            echo "Usage: bash run_benchmarks.sh [MODE] [-j N]"
+            echo "Usage: bash run_benchmarks_ultrabubbles.sh [MODE] [-j N]"
             echo ""
             echo "Modes:"
             echo "  --slurm          Full pipeline via SLURM"
@@ -61,7 +61,7 @@ kill_all_snakemake() {
     if [ -f "$PIDFILE" ]; then
         PID=$(cat "$PIDFILE")
         if kill -0 "$PID" 2>/dev/null; then
-            echo "  Killing run_benchmarks.sh (PID $PID)..."
+            echo "  Killing run_benchmarks_ultrabubbles.sh (PID $PID)..."
             kill -- -"$PID" 2>/dev/null || kill "$PID" 2>/dev/null || true
             KILLED=1
         fi
@@ -90,7 +90,62 @@ kill_all_snakemake() {
 ensure_slurm_plugin() {
     if ! python3 -c "import snakemake_executor_plugin_slurm" 2>/dev/null; then
         echo "Installing snakemake-executor-plugin-slurm..."
-        pip install snakemake-executor-plugin-slurm --quiet
+        pip3 install snakemake-executor-plugin-slurm --quiet
+    fi
+}
+
+detect_slurm_account() {
+    local acct
+    acct=$(sacctmgr -n -p show user "$USER" withassoc format=Account 2>/dev/null \
+        | head -1 | tr -d '|' | xargs)
+    [ -n "$acct" ] && echo "$acct" && return
+    acct=$(sshare -U -u "$USER" --format=Account --noheader 2>/dev/null \
+        | head -1 | xargs)
+    [ -n "$acct" ] && echo "$acct" && return
+    echo ""
+}
+
+update_slurm_profile() {
+    local profile_cfg="$PROFILE/config.yaml"
+    [ ! -f "$profile_cfg" ] && profile_cfg="$PROFILE/config.yaml "
+    [ ! -f "$profile_cfg" ] && return
+    local current detected
+    current=$(grep -oP 'slurm_account:\s*\K\S+' "$profile_cfg" 2>/dev/null | head -1)
+    detected=$(detect_slurm_account)
+    if [ -z "$detected" ]; then
+        return
+    fi
+    if [ "$current" != "$detected" ]; then
+        echo "  Updating SLURM account: $current → $detected"
+        sed -i "s/slurm_account: .*/slurm_account: $detected/" "$profile_cfg"
+    fi
+}
+
+print_run_summary() {
+    local R="$1"
+    local n_ok=0 n_fail=0
+    for f in "$R"/*.time; do
+        [ -f "$f" ] && n_ok=$((n_ok + 1))
+    done
+    for f in "$R"/*.time.failed; do
+        [ -f "$f" ] && n_fail=$((n_fail + 1))
+    done
+    echo ""
+    echo " Run summary: $n_ok succeeded, $n_fail failed "
+    if [ "$n_fail" -gt 0 ]; then
+        for f in "$R"/*.time.failed; do
+            [ -f "$f" ] || continue
+            local name reason
+            name=$(basename "$f" .time.failed)
+            reason=$(grep '^REASON=' "$f" 2>/dev/null | head -1 | cut -d= -f2)
+            case "$reason" in
+                TIMEOUT)       printf "  %-8s %s\n" "TIMEOUT" "$name" ;;
+                KILLED_OR_OOM) printf "  %-8s %s\n" "OOM" "$name" ;;
+                SEGFAULT)      printf "  %-8s %s\n" "SEGFAULT" "$name" ;;
+                ERROR)         printf "  %-8s %s\n" "ERROR" "$name" ;;
+                *)             printf "  %-8s %s\n" "UNKNOWN" "$name" ;;
+            esac
+        done
     fi
 }
 
@@ -122,6 +177,7 @@ case "$MODE" in
         echo ""
         echo " Generating tables from partial results"
         mkdir -p "$TABLES_DIR"
+        print_run_summary "$RESULTS_DIR"
         python3 scripts/make_table.py "$RESULTS_DIR" "$TABLES_DIR"
 
         echo ""
@@ -131,10 +187,10 @@ case "$MODE" in
 
     --cancel)
         if [ -z "$CANCEL_JOBID" ]; then
-            echo "Usage: bash run_benchmarks.sh --cancel <SLURM_JOBID>" >&2
+            echo "Usage: bash run_benchmarks_ultrabubbles.sh --cancel <SLURM_JOBID>" >&2
             exit 1
         fi
-        LOG_FILE="run_benchmarks.log"
+        LOG_FILE="run_benchmarks_ultrabubbles.log"
         OUTPUT_FILE=$(awk -v jid="$CANCEL_JOBID" '
             /^[[:space:]]*output:/ { out=$2 }
             $0 ~ "SLURM jobid " jid { print out; exit }
@@ -161,6 +217,7 @@ case "$MODE" in
         snakemake -s "$SMK" --unlock 2>/dev/null || true
         JOBS=${JOBS:-20}
         ensure_slurm_plugin
+        update_slurm_profile
         nohup bash -c "
             cd '$SCRIPT_DIR'
             echo \$\$ > '$PIDFILE'
@@ -173,10 +230,14 @@ case "$MODE" in
 
     --slurm)
         ensure_slurm_plugin
+        update_slurm_profile
         EXISTING=$(pgrep -f "snakemake.*$SMK" 2>/dev/null || true)
         if [ -n "$EXISTING" ]; then
             echo "WARNING: Killing existing snakemake processes: $EXISTING"
             kill_all_snakemake
+            echo "  Cancelling orphan SLURM jobs..."
+            scancel -u "$USER" 2>/dev/null || true
+            sleep 2
             snakemake -s "$SMK" --unlock 2>/dev/null || true
         fi
 
@@ -185,8 +246,13 @@ case "$MODE" in
         echo ""
         echo " Phase 2: Build + bench + tables (SLURM, -j $JOBS) "
         echo $$ > "$PIDFILE"
-        snakemake -s "$SMK" --profile "$PROFILE" -j "$JOBS" --rerun-incomplete --keep-going generate_tables
+        snakemake -s "$SMK" --profile "$PROFILE" -j "$JOBS" --rerun-incomplete --keep-going generate_tables || true
         rm -f "$PIDFILE"
+        print_run_summary "$RESULTS_DIR"
+        echo ""
+        echo " Generating tables from available results "
+        mkdir -p "$TABLES_DIR"
+        python3 scripts/make_table.py "$RESULTS_DIR" "$TABLES_DIR"
         ;;
 
     --tables-only)
@@ -213,8 +279,13 @@ case "$MODE" in
         echo ""
         echo " Phase 2: Build + bench + tables (local, -j $JOBS) "
         echo $$ > "$PIDFILE"
-        snakemake -s "$SMK" -j "$JOBS" --rerun-incomplete --keep-going generate_tables
+        snakemake -s "$SMK" -j "$JOBS" --rerun-incomplete --keep-going generate_tables || true
         rm -f "$PIDFILE"
+        print_run_summary "$RESULTS_DIR"
+        echo ""
+        echo " Generating tables from available results "
+        mkdir -p "$TABLES_DIR"
+        python3 scripts/make_table.py "$RESULTS_DIR" "$TABLES_DIR"
         ;;
 esac
 

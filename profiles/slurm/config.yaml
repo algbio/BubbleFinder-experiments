@@ -1,0 +1,4 @@
+  compute_vg_stats:
+    runtime: 120
+    mem_mb: 180000
+    cpus_per_task: 1

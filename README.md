@@ -15,17 +15,19 @@ Running the default target `all` (`snakemake all ...`) triggers the workflow nee
 > [!IMPORTANT]
 > **Reproduce the ultrabubbles experiments**
 >
-> Our script downloads all datasets from [Zenodo (record 19209715)](https://zenodo.org/records/19209715),
-> builds five tools, runs all benchmarks, and generates LaTeX tables.
+> The script `run_benchmarks_ultrabubbles.sh` downloads all datasets from
+> [Zenodo (record 19209715)](https://zenodo.org/records/19209715), builds the four tools used in the study, runs all benchmarks, and generates the LaTeX tables.
+>
 > See [Section 8](#8-ultrabubble-benchmarks-run_benchmarkssh) for details.
 >
 > ```bash
 > # On a SLURM cluster:
-> nohup bash run_benchmarks.sh --slurm -j 20 > run_benchmarks.log 2>&1 &
+> nohup bash run_benchmarks_ultrabubbles.sh --slurm -j <NUMBER-OF-JOBS> > run_benchmarks.log 2>&1 &
 >
 > # On a single machine (no SLURM):
-> nohup bash run_benchmarks.sh > run_benchmarks.log 2>&1 &
+> nohup bash run_benchmarks_ultrabubbles.sh > run_benchmarks.log 2>&1 &
 > ```
+
 
 ---
 
@@ -44,7 +46,7 @@ Running the default target `all` (`snakemake all ...`) triggers the workflow nee
 - [5. Output structure](#5-output-structure)
 - [6. Customizing tool binaries](#6-customizing-tool-binaries)
 - [7. Quick troubleshooting](#7-quick-troubleshooting)
-- [8. Ultrabubble benchmarks (`run_benchmarks.sh`)](#8-ultrabubble-benchmarks-run_benchmarkssh)
+- [8. Ultrabubble benchmarks (`run_benchmarks_ultrabubbles.sh`)](#8-ultrabubble-benchmarks-run_benchmarkssh)
 
 ---
 
@@ -412,19 +414,19 @@ If these paths are not set, the Snakefile will:
 
 ---
 
-## 8. Ultrabubble benchmarks (`run_benchmarks.sh`)
+## 8. Ultrabubble benchmarks (`run_benchmarks_ultrabubbles.sh`)
 
 This script reproduces the ultrabubble experiments. Downloads 18 datasets from
 [Zenodo (record 19209715)](https://zenodo.org/records/19209715) and HPRC S3,
-builds five tools (BubbleFinder, vg, BubbleGun, Billi, gfa\_stats), runs all
+builds five tools (BubbleFinder, vg, BubbleGun, Billi-heuristic), runs all
 benchmarks, and generates LaTeX tables in `tables/`.
 
 ```bash
 # SLURM cluster
-nohup bash run_benchmarks.sh --slurm -j 20 > run_benchmarks.log 2>&1 &
+nohup bash run_benchmarks_ultrabubbles.sh --slurm -j <NUMBER-OF-JOBS> > run_benchmarks_ultrabubbles.log 2>&1 &
 
 # Single machine:
-bash run_benchmarks.sh
+bash run_benchmarks_ultrabubbles.sh
 ```
 
 ### Commands

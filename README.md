@@ -12,6 +12,21 @@ Running the default target `all` (`snakemake all ...`) triggers the workflow nee
 
 **Note:** steps (build / clean / conversions / benchmarks) run only if required by the requested Snakemake targets and by `datasets.yaml`. In particular, any benchmark/aggregation target (e.g. `results/benchmarks.tsv` or `all`) will build `data/<dataset>/<dataset>.cleaned.gfa` for the datasets being benchmarked.
 
+> [!IMPORTANT]
+> **Reproduce the ultrabubbles experiments**
+>
+> Our script downloads all datasets from [Zenodo (record 19209715)](https://zenodo.org/records/19209715),
+> builds five tools, runs all benchmarks, and generates LaTeX tables.
+> See [Section 8](#8-ultrabubble-benchmarks-run_benchmarkssh) for details.
+>
+> ```bash
+> # On a SLURM cluster:
+> nohup bash run_benchmarks.sh --slurm -j 20 > run_benchmarks.log 2>&1 &
+>
+> # On a single machine (no SLURM):
+> nohup bash run_benchmarks.sh > run_benchmarks.log 2>&1 &
+> ```
+
 ---
 
 ## Table of contents
@@ -29,6 +44,7 @@ Running the default target `all` (`snakemake all ...`) triggers the workflow nee
 - [5. Output structure](#5-output-structure)
 - [6. Customizing tool binaries](#6-customizing-tool-binaries)
 - [7. Quick troubleshooting](#7-quick-troubleshooting)
+- [8. Ultrabubble benchmarks (`run_benchmarks.sh`)](#8-ultrabubble-benchmarks-run_benchmarkssh)
 
 ---
 
@@ -209,7 +225,7 @@ defaults:
 ```
 
 Note: dataset names do not control BubbleFinder modes; only the `modes:` field does.  
-Also, BubbleFinder’s `ultrabubbles` mode requires **at least one tip per connected component** in the input graph (BubbleFinder requirement).
+Also, BubbleFinder's `ultrabubbles` mode requires **at least one tip per connected component** in the input graph (BubbleFinder requirement).
 
 ### 3.5 When are sgraph / edgelist produced?
 
@@ -220,7 +236,7 @@ These derived representations are built only if required by the selected benchma
 
 ### 3.6 Threads configuration (build + benchmarks)
 
-There are two distinct “thread” concepts:
+There are two distinct "thread" concepts:
 
 - `snakemake -j <N>` controls **how many rules run in parallel** (workflow-level parallelism).
 - Program-specific thread counts control **how many threads a tool uses** inside one rule.
@@ -393,3 +409,41 @@ If these paths are not set, the Snakefile will:
 - Bluntification issues:
   - A WARN about `get_blunted` means the pipeline falls back to "naive bluntify" (overlap fields forced to `*`).
   - Install GetBlunted and set `defaults.tools.get_blunted` to use it.
+
+---
+
+## 8. Ultrabubble benchmarks (`run_benchmarks.sh`)
+
+This script reproduces the ultrabubble experiments. Downloads 18 datasets from
+[Zenodo (record 19209715)](https://zenodo.org/records/19209715) and HPRC S3,
+builds five tools (BubbleFinder, vg, BubbleGun, Billi, gfa\_stats), runs all
+benchmarks, and generates LaTeX tables in `tables/`.
+
+```bash
+# SLURM cluster
+nohup bash run_benchmarks.sh --slurm -j 20 > run_benchmarks.log 2>&1 &
+
+# Single machine:
+bash run_benchmarks.sh
+```
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `--slurm -j N` | Full pipeline via SLURM |
+| *(no flag)* | Full pipeline, local |
+| `--stop` | Kill all jobs, generate tables from partial results |
+| `--cancel <JOBID>` | Cancel one SLURM job; pipeline restarts automatically |
+| `--tables-only` | Regenerate `.tex` from existing `results/` |
+| `--download-only` | Download and decompress datasets only |
+| `--dry-run` | Show plan, no execution |
+
+After `--stop`, re-running `--slurm` only re-executes what is missing.
+`--cancel` is needed because the Snakemake SLURM plugin (v2.5.x) does not
+detect `scancel`ed jobs.
+
+### SLURM configuration
+
+Edit `profiles/slurm/config.yaml` to adjust per-rule memory and time limits.
+Set `slurm_account` to your cluster's account (default: `cs`).

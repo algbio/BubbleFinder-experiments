@@ -3,7 +3,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-SMK="modules/tables.smk"
+SMK="Snakefile"
 PROFILE="$(pwd)/profiles/slurm"
 RESULTS_DIR="results"
 TABLES_DIR="tables"
@@ -97,10 +97,10 @@ ensure_slurm_plugin() {
 detect_slurm_account() {
     local acct
     acct=$(sacctmgr -n -p show user "$USER" withassoc format=Account 2>/dev/null \
-        | head -1 | tr -d '|' | xargs)
+        | head -1 | tr -d '|' | xargs || true)
     [ -n "$acct" ] && echo "$acct" && return
     acct=$(sshare -U -u "$USER" --format=Account --noheader 2>/dev/null \
-        | head -1 | xargs)
+        | head -1 | xargs || true)
     [ -n "$acct" ] && echo "$acct" && return
     echo ""
 }
@@ -110,7 +110,7 @@ update_slurm_profile() {
     [ ! -f "$profile_cfg" ] && profile_cfg="$PROFILE/config.yaml "
     [ ! -f "$profile_cfg" ] && return
     local current detected
-    current=$(grep -oP 'slurm_account:\s*\K\S+' "$profile_cfg" 2>/dev/null | head -1)
+    current=$(grep -oP 'slurm_account:\s*\K\S+' "$profile_cfg" 2>/dev/null | head -1 || true)
     detected=$(detect_slurm_account)
     if [ -z "$detected" ]; then
         return

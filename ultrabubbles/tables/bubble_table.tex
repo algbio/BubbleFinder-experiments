@@ -1,0 +1,68 @@
+\begin{table*}[ht]
+\centering
+\definecolor{famBiSB}{HTML}{F9E0E0}
+\definecolor{famBiSBLight}{HTML}{FAE5E5}
+\definecolor{famSnarl}{HTML}{E0F4E5}
+\definecolor{famSnarlLight}{HTML}{E5F6EA}
+\caption{Number of bubbles reported by each tool.
+  All counts are based on GFA input, except for HPRC v2.0 with \texttt{vg snarls}, which was run on GBZ input because the GFA run timed out after 24\,h.
+  Ultrabubble counts are shown both including and excluding trivial bubbles, as controlled by the \texttt{-T} flag in \texttt{vg snarls} and BubbleFinder.
+  For \texttt{vg snarls}, the \emph{snarls} and \emph{diff} columns correspond to runs with trivial bubbles included; \emph{diff} denotes the number of snarls that are not ultrabubbles.
+  BubbleGun reports nontrivial superbubbles, and Billi-heuristic reports nontrivial panbubbles.
+  TO = exceeded the time limit; N/A = tool does not run on graphs with tipless connected components. We mark in \textbf{bold} the values equal to the corresponding number of non-trivial ultrabubbles reported by \vg.}
+\label{tab:bubbles}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{3.5pt}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{l l r r r r r r r r r r}
+\toprule
+\multirow{3}{*}{Type} & \multirow{3}{*}{Dataset} &
+\multicolumn{4}{>{\columncolor{famSnarl}}c}{\texttt{vg snarls}} &
+\multicolumn{4}{>{\columncolor{famBiSB}}c}{BubbleFinder (ultrabubbles)} &
+\multirow{3}{*}{\makecell{BubbleGun \\ {\scriptsize superbubbles}}} &
+\multirow{3}{*}{\makecell{Billi-heuristic \\ {\scriptsize panbubbles}}} \\
+& &
+\multicolumn{1}{>{\columncolor{famSnarl}}c}{} &
+\multicolumn{1}{>{\columncolor{famSnarl}}c}{} &
+\multicolumn{1}{>{\columncolor{famSnarl}}c}{} &
+\multicolumn{1}{>{\columncolor{famSnarl}}c}{} &
+\multicolumn{2}{>{\columncolor{famBiSB}}c}{\scriptsize orientation} &
+\multicolumn{2}{>{\columncolor{famBiSB}}c}{\scriptsize doubled} &
+& \\
+& &
+\multicolumn{1}{>{\columncolor{famSnarl}}c}{\multirow{-2}{*}{\scriptsize \makecell{ultrabubbles\\incl.\ trivial}}} &
+\multicolumn{1}{>{\columncolor{famSnarl}}c}{\multirow{-2}{*}{\scriptsize \makecell{snarls\\incl.\ trivial}}} &
+\multicolumn{1}{>{\columncolor{famSnarl}}c}{\multirow{-2}{*}{\scriptsize diff}} &
+\multicolumn{1}{>{\columncolor{famSnarl}}c}{\multirow{-2}{*}{\scriptsize \makecell{ultrabubbles\\excl.\ trivial}}} &
+\multicolumn{1}{>{\columncolor{famBiSB}}c}{\scriptsize incl.\ triv.} &
+\multicolumn{1}{>{\columncolor{famBiSB}}c}{\scriptsize excl.\ triv.} &
+\multicolumn{1}{>{\columncolor{famBiSB}}c}{\scriptsize incl.\ triv.} &
+\multicolumn{1}{>{\columncolor{famBiSB}}c}{\scriptsize excl.\ triv.} &
+& \\
+\midrule
+\multirow{2}{*}{\textsf{MC}} & \textsf{HPRC v1.1 CHM13 (47 indiv.)} & 30,642,064 & 30,642,640 & 576 & \textbf{29,322,185} & 30,642,064 & \textbf{29,322,185} & 30,642,064 & \textbf{29,322,185} & TO (2\,h) & 29,322,731 \\
+ & \textsf{HPRC v2.0 CHM13 (232 indiv.)} & 48,813,851 & 48,814,258 & 407 & \textbf{46,260,413} & 48,813,851 & \textbf{46,260,413} & 48,813,851 & \textbf{46,260,413} & TO (2\,h) & 46,260,770 \\
+\hline
+\multirow{4}{*}{\textsf{pggb}} & \textsf{E.~coli (50 indiv.)} & 469,226 & 469,893 & 667 & \textbf{469,074} & 469,226 & \textbf{469,074} & 469,226 & \textbf{469,074} & \textbf{469,074} & 469,739 \\
+ & \textsf{Mouse Chr.~19 (17 indiv.)} & 1,997,688 & 2,000,595 & 2,907 & \textbf{1,997,595} & 1,997,688 & \textbf{1,997,595} & 1,997,688 & \textbf{1,997,595} & \textbf{1,997,595} & 2,000,499 \\
+ & \textsf{Primate Chr.~6 (14 indiv.)} & 10,597,474 & 10,600,010 & 2,536 & \textbf{10,597,445} & 10,597,474 & \textbf{10,597,445} & 10,597,474 & \textbf{10,597,445} & \textbf{10,597,445} & 10,599,914 \\
+ & \textsf{Tomato Chr.~2 (23 indiv.)} & 760,258 & 760,962 & 704 & \textbf{760,186} & 760,258 & \textbf{760,186} & 760,258 & \textbf{760,186} & \textbf{760,186} & 760,865 \\
+\hline
+\multirow{1}{*}{\textsf{dbg}} & \textsf{M.~xanthus (10 indiv.)} & 103,391 & 156,687 & 53,296 & \textbf{41,777} & 103,391 & \textbf{41,777} & 103,391 & \textbf{41,777} & \textbf{41,777} & 41,780 \\
+\hline
+\multirow{3}{*}{\textsf{vg}} & \textsf{1000GP Chr.~1} & 6,095,110 & 6,095,110 & 0 & \textbf{6,095,099} & 6,095,110 & \textbf{6,095,099} & 6,095,110 & \textbf{6,095,099} & \textbf{6,095,099} & \textbf{6,095,099} \\
+ & \textsf{1000GP Chr.~10} & 3,747,617 & 3,747,617 & 0 & \textbf{3,747,616} & 3,747,617 & \textbf{3,747,616} & 3,747,617 & \textbf{3,747,616} & \textbf{3,747,616} & \textbf{3,747,616} \\
+ & \textsf{1000GP Chr.~22} & 1,027,822 & 1,027,822 & 0 & \textbf{1,027,814} & 1,027,822 & \textbf{1,027,814} & 1,027,822 & \textbf{1,027,814} & \textbf{1,027,814} & \textbf{1,027,814} \\
+\hline
+\multirow{8}{*}{\textsf{Pangene}} & \textsf{E.~coli v1.1} & 7,237 & 7,259 & 22 & \textbf{400} & 7,237 & \textbf{400} & 7,237 & \textbf{400} & \textbf{400} & 403 \\
+ & \textsf{M.~tb 152m p0} & 3,804 & 3,822 & 18 & \textbf{133} & 3,804 & \textbf{133} & 3,804 & \textbf{133} & \textbf{133} & 151 \\
+ & \textsf{M.~tb 152m p1} & 3,908 & 3,920 & 12 & \textbf{84} & 3,908 & \textbf{84} & 3,908 & \textbf{84} & \textbf{84} & 93 \\
+ & \textsf{M.~tb 152p} & 3,744 & 3,760 & 16 & \textbf{131} & 3,744 & \textbf{131} & 3,744 & \textbf{131} & \textbf{131} & 147 \\
+ & \textsf{Human 100} & 17,974 & 18,198 & 224 & \textbf{90} & 17,974 & \textbf{90} & 17,974 & \textbf{90} & 92 & N/A \\
+ & \textsf{Human 100+10\%} & 17,129 & 17,379 & 250 & \textbf{169} & 17,129 & \textbf{169} & 17,129 & \textbf{169} & 170 & 403 \\
+ & \textsf{Human 472} & 17,956 & 18,180 & 224 & \textbf{85} & 17,956 & \textbf{85} & 17,956 & \textbf{85} & 86 & 270 \\
+ & \textsf{Human 472+10\%} & 17,280 & 17,527 & 247 & \textbf{160} & 17,280 & \textbf{160} & 17,280 & \textbf{160} & \textbf{160} & 383 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table*}

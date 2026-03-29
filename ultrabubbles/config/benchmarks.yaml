@@ -1,0 +1,16 @@
+timeout_default_hours: 2
+
+timeout_per_program:
+  vg_gfa_T: 2
+  vg_gfa_noT: 2
+  bf_gfa_T: 2
+  bf_gfa_noT: 2
+  bf_sb_gfa_T: 2
+  bf_sb_gfa_noT: 2
+  bubblegun: 2
+  billi: 2
+  gfa_stats: 1
+  vg_gbz_T: 2
+  vg_gbz_noT: 2
+  bf_gbz_T: 2
+  bf_gbz_noT: 2  

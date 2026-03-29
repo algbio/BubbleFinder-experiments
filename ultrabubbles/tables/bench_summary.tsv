@@ -1,0 +1,117 @@
+dataset	tool	format	wall_sec	user_sec	sys_sec	rss_kb	parse_sec	algo_sec	n_ub	run_status
+Ecoli-v1.1-p0g30r5	bf_gfa	gfa	0.11	0.02	0.05	64928	0.0	0.0	7237	
+Ecoli-v1.1-p0g30r5	bf_gfa_noT	gfa	0.11	0.03	0.02	66968	0.1	0.0	400	
+Ecoli-v1.1-p0g30r5	bf_sb_gfa	gfa	0.13	0.07	0.02	65000	0.0	0.1		
+Ecoli-v1.1-p0g30r5	bf_sb_gfa_noT	gfa	0.14	0.05	0.02	65092	0.1	0.0		
+Ecoli-v1.1-p0g30r5	vg_gfa	gfa	0.85	0.29	0.35	40844			7237	
+Ecoli-v1.1-p0g30r5	vg_gfa_noT	gfa	0.6	0.29	0.16	41664			400	
+GCA.cleaned	bf_gfa	gfa	3.86	3.27	0.24	521004	1.4	2.3	103391	
+GCA.cleaned	bf_gfa_noT	gfa	3.4	3.11	0.24	521020	1.1	2.3	41777	
+GCA.cleaned	bf_sb_gfa	gfa	9.49	7.96	0.98	2571616	1.3	7.5		
+GCA.cleaned	bf_sb_gfa_noT	gfa	10.51	9.54	0.89	2571632	1.1	8.6		
+GCA.cleaned	vg_gfa	gfa	28.88	26.98	1.75	1481564			103391	
+GCA.cleaned	vg_gfa_noT	gfa	31.55	29.82	1.63	1481228			41777	
+Mtb152m-v1.1-p0a1	bf_gfa	gfa	0.06	0.01	0.02	66896	0.0	0.0	3804	
+Mtb152m-v1.1-p0a1	bf_gfa_noT	gfa	0.15	0.02	0.04	66848	0.1	0.0	133	
+Mtb152m-v1.1-p0a1	bf_sb_gfa	gfa	0.07	0.01	0.03	64904	0.0	0.0		
+Mtb152m-v1.1-p0a1	bf_sb_gfa_noT	gfa	0.08	0.01	0.03	64744	0.0	0.0		
+Mtb152m-v1.1-p0a1	vg_gfa	gfa	0.44	0.37	0.04	30368			3804	
+Mtb152m-v1.1-p0a1	vg_gfa_noT	gfa	0.63	0.38	0.22	30372			133	
+Mtb152m-v1.1-p1a2	bf_gfa	gfa	0.09	0.02	0.03	64952	0.0	0.0	3908	
+Mtb152m-v1.1-p1a2	bf_gfa_noT	gfa	0.08	0.02	0.01	64800	0.0	0.0	84	
+Mtb152m-v1.1-p1a2	bf_sb_gfa	gfa	0.1	0.02	0.02	64876	0.1	0.0		
+Mtb152m-v1.1-p1a2	bf_sb_gfa_noT	gfa	0.06	0.01	0.02	66928	0.0	0.0		
+Mtb152m-v1.1-p1a2	vg_gfa	gfa	0.61	0.33	0.19	31584			3908	
+Mtb152m-v1.1-p1a2	vg_gfa_noT	gfa	0.44	0.37	0.04	31580			84	
+Mtb152p-v1.1-p0a1	bf_gfa	gfa	0.1	0.03	0.02	69080	0.1	0.0	3744	
+Mtb152p-v1.1-p0a1	bf_gfa_noT	gfa	0.08	0.03	0.03	68976	0.0	0.0	131	
+Mtb152p-v1.1-p0a1	bf_sb_gfa	gfa	0.11	0.02	0.03	68952	0.1	0.0		
+Mtb152p-v1.1-p0a1	bf_sb_gfa_noT	gfa	0.16	0.01	0.04	69024	0.1	0.0		
+Mtb152p-v1.1-p0a1	vg_gfa	gfa	0.86	0.37	0.46	30300			3744	
+Mtb152p-v1.1-p0a1	vg_gfa_noT	gfa	0.97	0.4	0.54	32352			131	
+Ultrabubble_dataset_chr1.cleaned	bf_gfa	gfa	40.54	37.69	2.52	6079044	11.8	28.6	6095110	
+Ultrabubble_dataset_chr1.cleaned	bf_gfa_noT	gfa	53.77	42.78	3.69	6079112	21.8	31.8	6095099	
+Ultrabubble_dataset_chr1.cleaned	bf_sb_gfa	gfa	166.05	150.5	15.19	25471732	13.4	142.5		
+Ultrabubble_dataset_chr1.cleaned	bf_sb_gfa_noT	gfa	144.95	133.92	10.72	25471668	11.8	124.4		
+Ultrabubble_dataset_chr1.cleaned	vg_gfa	gfa	381.03	355.1	24.9	19650884			6095110	
+Ultrabubble_dataset_chr1.cleaned	vg_gfa_noT	gfa	386.71	360.47	25.15	19644176			6095099	
+Ultrabubble_dataset_chr10.cleaned	bf_gfa	gfa	36.25	32.14	3.94	3737640	10.5	25.6	3747617	
+Ultrabubble_dataset_chr10.cleaned	bf_gfa_noT	gfa	28.47	22.68	1.75	3742924	11.2	17.2	3747616	
+Ultrabubble_dataset_chr10.cleaned	bf_sb_gfa	gfa	111.05	101.16	9.0	15467320	8.3	95.7		
+Ultrabubble_dataset_chr10.cleaned	bf_sb_gfa_noT	gfa	86.74	76.14	6.66	15472372	11.3	70.4		
+Ultrabubble_dataset_chr10.cleaned	vg_gfa	gfa	263.48	246.32	15.43	11957628			3747617	
+Ultrabubble_dataset_chr10.cleaned	vg_gfa_noT	gfa	275.5	258.93	15.4	11957964			3747616	
+Ultrabubble_dataset_chr22.cleaned	bf_gfa	gfa	7.99	6.81	0.59	1045928	2.8	5.2	1027822	
+Ultrabubble_dataset_chr22.cleaned	bf_gfa_noT	gfa	8.34	7.43	0.81	1045956	2.5	5.8	1027814	
+Ultrabubble_dataset_chr22.cleaned	bf_sb_gfa	gfa	22.6	19.96	1.99	4461444	2.3	18.9		
+Ultrabubble_dataset_chr22.cleaned	bf_sb_gfa_noT	gfa	23.17	20.09	1.82	4458312	2.9	18.8		
+Ultrabubble_dataset_chr22.cleaned	vg_gfa	gfa	58.84	54.17	4.31	3393116			1027822	
+Ultrabubble_dataset_chr22.cleaned	vg_gfa_noT	gfa	60.16	55.51	4.14	3386284			1027814	
+ecoli50.cleaned	bf_gfa	gfa	1.69	1.32	0.31	524896	0.8	0.9	469226	
+ecoli50.cleaned	bf_gfa_noT	gfa	1.64	1.29	0.3	524892	0.8	0.8	469074	
+ecoli50.cleaned	bf_sb_gfa	gfa	6.4	5.39	0.96	2519640	0.8	5.0		
+ecoli50.cleaned	bf_sb_gfa_noT	gfa	8.42	6.19	1.16	2519672	2.1	5.6		
+ecoli50.cleaned	vg_gfa	gfa	56.59	51.79	4.46	2210896			469226	
+ecoli50.cleaned	vg_gfa_noT	gfa	55.99	51.64	4.19	2213024			469074	
+hprc-v1.1-mc-chm13	bf_gbz		157.53	134.36	24.54	15020540	98.8	57.8	30642064	
+hprc-v1.1-mc-chm13	bf_gbz_noT		149.46	135.92	14.32	15020444	96.7	52.2	29322185	
+hprc-v1.1-mc-chm13	bf_gfa	gfa	141.27	110.5	29.58	58117112	86.9	53.8	30642064	
+hprc-v1.1-mc-chm13	bf_gfa_noT	gfa	136.43	107.95	26.74	58117192	86.4	49.6	29322185	
+hprc-v1.1-mc-chm13	bf_sb_gfa	gfa	730.55	406.44	101.19	104218056	332.6	345.7		
+hprc-v1.1-mc-chm13	bf_sb_gfa_noT	gfa	705.79	387.36	100.61	104048720	323.7	330.4		
+hprc-v1.1-mc-chm13	vg_gbz		1759.04	1672.17	77.78	49890808			30928112	
+hprc-v1.1-mc-chm13	vg_gbz_noT		1819.53	1735.11	76.46	50019588			29322185	
+hprc-v1.1-mc-chm13	vg_gfa	gfa	6775.0	6454.91	285.06	96872600			30642064	
+hprc-v1.1-mc-chm13	vg_gfa_noT	gfa	6760.0	6439.78	280.14	94441804			29322185	
+hprc-v2.0-mc-chm13	bf_gbz		235.99	209.88	29.24	22249036	151.5	83.4	48813851	
+hprc-v2.0-mc-chm13	bf_gbz_noT		220.37	206.4	18.13	22250928	140.6	79.0	46260413	
+hprc-v2.0-mc-chm13	bf_gfa	gfa	2390.22	428.47	387.28	130370024	2312.1	77.4	48813851	
+hprc-v2.0-mc-chm13	bf_gfa_noT	gfa	2884.01	420.13	427.23	129578448	2789.5	93.2	46260413	
+hprc-v2.0-mc-chm13	bf_sb_gfa	gfa	1412.88	1067.39	337.55	391507996	597.0	713.8		
+hprc-v2.0-mc-chm13	bf_sb_gfa_noT	gfa	1344.39	1058.22	281.13	391507172	563.9	682.5		
+hprc-v2.0-mc-chm13	vg_gbz		2685.36	2528.39	136.19	76168400			48813851	
+hprc-v2.0-mc-chm13	vg_gbz_noT		2777.57	2633.24	131.68	79944128			46260413	
+hprc-v2.0-mc-chm13	vg_gfa	gfa	7200.0	0.0	0.01	3656				timeout
+hprc-v2.0-mc-chm13	vg_gfa_noT	gfa	7200.0	0.0	0.0	3668				timeout
+human100-v1.1-a1	bf_gfa	gfa	0.09	0.03	0.04	79240	0.0	0.0	17974	
+human100-v1.1-a1	bf_gfa_noT	gfa	0.16	0.03	0.04	79416	0.1	0.0	90	
+human100-v1.1-a1	bf_sb_gfa	gfa	0.16	0.1	0.03	79232	0.0	0.1		
+human100-v1.1-a1	bf_sb_gfa_noT	gfa	0.11	0.06	0.04	79212	0.0	0.0		
+human100-v1.1-a1	vg_gfa	gfa	3.28	1.53	1.68	78024			17974	
+human100-v1.1-a1	vg_gfa_noT	gfa	1.64	1.46	0.13	79732			90	
+human100p10-v1.1-a1	bf_gfa	gfa	0.13	0.05	0.04	81152	0.1	0.0	17129	
+human100p10-v1.1-a1	bf_gfa_noT	gfa	0.21	0.04	0.03	83064	0.2	0.0	169	
+human100p10-v1.1-a1	bf_sb_gfa	gfa	0.23	0.1	0.09	81196	0.1	0.1		
+human100p10-v1.1-a1	bf_sb_gfa_noT	gfa	0.12	0.06	0.03	81048	0.0	0.1		
+human100p10-v1.1-a1	vg_gfa	gfa	3.62	1.6	1.98	83084			17129	
+human100p10-v1.1-a1	vg_gfa_noT	gfa	3.97	1.81	2.12	83100			169	
+human472-1.1a2	bf_gfa	gfa	0.16	0.07	0.06	137568	0.1	0.0	17956	
+human472-1.1a2	bf_gfa_noT	gfa	0.15	0.07	0.06	137700	0.1	0.0	85	
+human472-1.1a2	bf_sb_gfa	gfa	0.62	0.12	0.12	137588	0.5	0.1		
+human472-1.1a2	bf_sb_gfa_noT	gfa	0.22	0.11	0.08	137700	0.1	0.1		
+human472-1.1a2	vg_gfa	gfa	5.99	5.64	0.26	166580			17956	
+human472-1.1a2	vg_gfa_noT	gfa	5.87	5.55	0.24	164220			85	
+human472p10-1.1a2	bf_gfa	gfa	0.16	0.09	0.04	139284	0.1	0.0	17280	
+human472p10-1.1a2	bf_gfa_noT	gfa	0.47	0.12	0.08	139168	0.4	0.0	160	
+human472p10-1.1a2	bf_sb_gfa	gfa	0.22	0.16	0.03	139240	0.1	0.1		
+human472p10-1.1a2	bf_sb_gfa_noT	gfa	0.19	0.09	0.07	139204	0.1	0.0		
+human472p10-1.1a2	vg_gfa	gfa	5.99	5.76	0.19	166356			17280	
+human472p10-1.1a2	vg_gfa_noT	gfa	5.76	5.55	0.18	166352			160	
+mouse17_chr19.cleaned	bf_gfa	gfa	6.67	5.63	0.94	1941160	2.7	3.9	1997688	
+mouse17_chr19.cleaned	bf_gfa_noT	gfa	12.08	6.25	1.87	1940504	7.8	4.2	1997595	
+mouse17_chr19.cleaned	bf_sb_gfa	gfa	32.51	23.29	4.38	10016716	7.9	21.9		
+mouse17_chr19.cleaned	bf_sb_gfa_noT	gfa	27.12	23.13	3.9	10017096	2.6	21.8		
+mouse17_chr19.cleaned	vg_gfa	gfa	184.81	165.31	18.89	8080428			1997688	
+mouse17_chr19.cleaned	vg_gfa_noT	gfa	221.13	199.19	20.21	8088288			1997595	
+primates_chr6.cleaned	bf_gfa	gfa	37.38	31.12	5.79	10333160	15.6	21.5	10597474	
+primates_chr6.cleaned	bf_gfa_noT	gfa	63.03	30.73	7.89	10333248	41.2	21.6	10597445	
+primates_chr6.cleaned	bf_sb_gfa	gfa	185.28	135.44	25.5	53961076	40.7	126.6		
+primates_chr6.cleaned	bf_sb_gfa_noT	gfa	183.69	154.45	28.9	53958068	15.9	145.6		
+primates_chr6.cleaned	vg_gfa	gfa	1276.51	1131.6	137.58	35475648			10597474	
+primates_chr6.cleaned	vg_gfa_noT	gfa	1028.1	906.87	117.16	39896688			10597445	
+tomato23_chr2.cleaned	bf_gfa	gfa	3.28	2.25	0.98	922036	1.7	1.5	760258	
+tomato23_chr2.cleaned	bf_gfa_noT	gfa	6.06	2.1	0.79	922620	4.8	1.3	760186	
+tomato23_chr2.cleaned	bf_sb_gfa	gfa	12.51	10.81	1.57	3688276	1.5	9.8		
+tomato23_chr2.cleaned	bf_sb_gfa_noT	gfa	13.55	8.62	1.86	3688292	4.7	7.8		
+tomato23_chr2.cleaned	vg_gfa	gfa	97.39	88.52	7.79	3289572			760258	
+tomato23_chr2.cleaned	vg_gfa_noT	gfa	94.61	86.38	7.67	3292072			760186	

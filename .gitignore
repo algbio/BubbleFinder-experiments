@@ -1,4 +1,11 @@
-/.snakemake
-/build
-/data
-/results
+*/.snakemake
+.snakemake
+*/build
+*/data
+*/results
+*/tools
+*/slurm_logs
+*.log
+ultrabubbles/tables/
+*.pid
+g++

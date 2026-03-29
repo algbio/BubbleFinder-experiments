@@ -1,0 +1,59 @@
+\begin{table*}[ht]
+\centering
+\definecolor{famBiSB}{HTML}{F9E0E0}
+\definecolor{famBiSBLight}{HTML}{FAE5E5}
+\definecolor{famSnarl}{HTML}{E0F4E5}
+\definecolor{famSnarlLight}{HTML}{E5F6EA}
+\caption{Performance comparison on GFA graphs across five tools computing bubble-like structures.
+  Times are wall-clock (single-threaded), formatted as h:mm:ss or m:ss.
+  Memory is peak RSS in GiB. For BubbleFinder and BubbleFinder (doubled), the Parsing column reports the parsing part of the runtime (including on-the-fly construction of the internal graph representation) and is included in the Time column. For the doubled mode, this involves building a graph with twice as many vertices.
+  BubbleFinder (doubled) uses the doubled-graph method for ultrabubble detection.
+  Best time and memory per dataset are in \textbf{bold} (excluding parsing-only columns and datasets where all tools take under one second).
+  TO~=~exceeded time limit; N/A~=~tool does not run because the graph is tipless.}
+\label{tab:gfa}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{4pt}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{l l c c c c c c c c c c c c}
+\toprule
+\multirow{2}{*}{Type} & \multirow{2}{*}{Dataset} &
+\multicolumn{2}{c}{\cellcolor{famSnarl}\texttt{vg snarls}} &
+\multicolumn{3}{c}{\cellcolor{famBiSB}BubbleFinder} &
+\multicolumn{3}{c}{\cellcolor{famBiSB}BubbleFinder (doubled)} &
+\multicolumn{2}{c}{BubbleGun} &
+\multicolumn{2}{c}{Billi-heuristic} \\
+ & &
+\cellcolor{famSnarl}{\scriptsize Time} & \cellcolor{famSnarl}{\scriptsize Mem} &
+\cellcolor{famBiSB}{\scriptsize Parsing} &
+\cellcolor{famBiSB}{\scriptsize Time} & \cellcolor{famBiSB}{\scriptsize Mem} &
+\cellcolor{famBiSB}{\scriptsize Parsing} &
+\cellcolor{famBiSB}{\scriptsize Time} & \cellcolor{famBiSB}{\scriptsize Mem} &
+{\scriptsize Time} & {\scriptsize Mem} &
+{\scriptsize Time} & {\scriptsize Mem} \\
+\midrule
+\multirow{2}{*}{\textsf{MC}} & \textsf{HPRC v1.1 CHM13 (47 indiv.)} & 1:52:55 & 92.4 & 1:26 & \textbf{2:21} & \textbf{55.4} & 5:32 & 12:10 & 99.4 & TO (2\,h) & 0.00 & 9:12 & 52.8 \\
+ & \textsf{HPRC v2.0 CHM13 (232 indiv.)} & TO (2\,h) & 0.00 & 38:32 & 39:50 & \textbf{124.3} & 9:57 & \textbf{23:32} & 373.4 & TO (2\,h) & 0.00 & 44:25 & 82.6 \\
+\hline
+\multirow{4}{*}{\textsf{pggb}} & \textsf{E.~coli (50 indiv.)} & 0:56 & 2.1 & $<$\,1s & \textbf{0:01} & \textbf{0.50} & $<$\,1s & 0:06 & 2.4 & 0:36 & 1.7 & 1:53 & 1.1 \\
+ & \textsf{Mouse Chr.~19 (17 indiv.)} & 3:04 & 7.7 & 0:02 & \textbf{0:06} & \textbf{1.9} & 0:07 & 0:32 & 9.6 & 2:21 & 7.0 & 0:35 & 4.4 \\
+ & \textsf{Primate Chr.~6 (14 indiv.)} & 21:16 & 33.8 & 0:15 & \textbf{0:37} & \textbf{9.9} & 0:40 & 3:05 & 51.5 & 16:13 & 39.4 & 2:59 & 25.1 \\
+ & \textsf{Tomato Chr.~2 (23 indiv.)} & 1:37 & 3.1 & 0:01 & \textbf{0:03} & \textbf{0.88} & 0:01 & 0:12 & 3.5 & 1:02 & 2.7 & 0:12 & 1.6 \\
+\hline
+\multirow{1}{*}{\textsf{dbg}} & \textsf{M.~xanthus (10 indiv.)} & 0:28 & 1.4 & 0:01 & \textbf{0:03} & \textbf{0.50} & 0:01 & 0:09 & 2.5 & 0:53 & 1.7 & 0:21 & 1.1 \\
+\hline
+\multirow{3}{*}{\textsf{vg}} & \textsf{1000GP Chr.~1} & 6:21 & 18.7 & 0:11 & \textbf{0:40} & \textbf{5.8} & 0:13 & 2:46 & 24.3 & 14:00 & 19.4 & 7:01 & 14.5 \\
+ & \textsf{1000GP Chr.~10} & 4:23 & 11.4 & 0:10 & \textbf{0:36} & \textbf{3.6} & 0:08 & 1:51 & 14.8 & 8:46 & 11.9 & 3:39 & 8.9 \\
+ & \textsf{1000GP Chr.~22} & 0:58 & 3.2 & 0:02 & \textbf{0:07} & \textbf{1.00} & 0:02 & 0:22 & 4.3 & 2:18 & 3.3 & 0:46 & 2.5 \\
+\hline
+\multirow{8}{*}{\textsf{Pangene}} & \textsf{E.~coli v1.1} & $<$\,1s & 0.04 & $<$\,1s & $<$\,1s & 0.06 & $<$\,1s & $<$\,1s & 0.06 & $<$\,1s & 0.03 & $<$\,1s & 0.01 \\
+ & \textsf{M.~tb 152m p0} & $<$\,1s & 0.03 & $<$\,1s & $<$\,1s & 0.06 & $<$\,1s & $<$\,1s & 0.06 & $<$\,1s & 0.02 & $<$\,1s & 0.00 \\
+ & \textsf{M.~tb 152m p1} & $<$\,1s & 0.03 & $<$\,1s & $<$\,1s & 0.06 & $<$\,1s & $<$\,1s & 0.06 & $<$\,1s & 0.02 & $<$\,1s & 0.00 \\
+ & \textsf{M.~tb 152p} & $<$\,1s & 0.03 & $<$\,1s & $<$\,1s & 0.07 & $<$\,1s & $<$\,1s & 0.07 & $<$\,1s & 0.02 & $<$\,1s & 0.00 \\
+ & \textsf{Human 100} & 0:03 & \textbf{0.07} & $<$\,1s & \textbf{$<$\,1s} & 0.08 & $<$\,1s & \textbf{$<$\,1s} & 0.08 & 0:02 & 0.04 & N/A & 0.01 \\
+ & \textsf{Human 100+10\%} & 0:03 & 0.08 & $<$\,1s & \textbf{$<$\,1s} & \textbf{0.08} & $<$\,1s & \textbf{$<$\,1s} & 0.08 & $<$\,1s & 0.04 & 0:02 & 0.01 \\
+ & \textsf{Human 472} & 0:05 & 0.16 & $<$\,1s & \textbf{$<$\,1s} & \textbf{0.13} & $<$\,1s & \textbf{$<$\,1s} & 0.13 & $<$\,1s & 0.04 & $<$\,1s & 0.01 \\
+ & \textsf{Human 472+10\%} & 0:05 & 0.16 & $<$\,1s & \textbf{$<$\,1s} & 0.13 & $<$\,1s & \textbf{$<$\,1s} & \textbf{0.13} & $<$\,1s & 0.04 & $<$\,1s & 0.01 \\
+\hline
+\end{tabular}
+\end{adjustbox}
+\end{table*}

@@ -1,0 +1,273 @@
+% Rows are filled from the current run.
+\begin{table}[htbp]
+\centering
+\caption{Performance on GBZ graphs. The last column subtracts the BubbleFinder reading time from both totals; it is an estimate, not a measured algorithm-only speedup.}
+\label{tab:supervisor-gbz}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{4pt}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{llccccccr}
+\toprule
+\multirow{2}{*}{Graph type} & \multirow{2}{*}{Dataset} & \multicolumn{2}{c}{\texttt{vg snarls}} & \multicolumn{2}{c}{BubbleFinder d-bubbles} & \multirow{2}{*}{\shortstack{GBZ parsing\\(s)}} & \multirow{2}{*}{\shortstack{Total ratio\\(vg/BF)}} & \multirow{2}{*}{\shortstack{Ratio after\\subtracting parsing}} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}
+ & & Time & Memory (GiB) & Time & Memory (GiB) & & & \\
+\midrule
+%% TABLE_ROWS:tab:supervisor-gbz:0 %%
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Performance on pangenome graphs. BubbleFinder uses GBZ on HPRC v2.1, whereas vg and Billi use GFA. All other inputs are GFA. Ultrabubbles use the method of~\cite{orientation}.}
+\label{tab:supervisor-gfa}
+\label{tab:current-gfa-performance}
+\vspace{2mm}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{4pt}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{llcccccccc}
+\toprule
+Graph type & Dataset & \multicolumn{2}{c}{\texttt{vg snarls}} & \multicolumn{2}{c}{Billi heuristic} & \multicolumn{2}{c}{\shortstack{BubbleFinder\\ultrabubbles}} & \multicolumn{2}{c}{\shortstack{BubbleFinder\\d-bubbles}} \\
+ & & Time & Memory (GiB) & Time & Memory (GiB) & Time & Memory (GiB) & Time & Memory (GiB) \\
+\midrule
+%% TABLE_ROWS:tab:supervisor-gfa:0 %%
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Nontrivial d-bubbles and snarls reported by vg. ``Found by both'' counts bubbles found by both tools; ``Only'' counts bubbles absent from the other output.}
+\label{tab:supervisor-comparison}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{4pt}
+\begin{adjustbox}{max width=0.7\linewidth}
+\begin{tabular}{llrrrrr}
+\toprule
+Graph type & Dataset & D-bubbles & vg snarls & \shortstack{Found by\\both} & \shortstack{Only\\d-bubbles} & \shortstack{Only\\vg snarls} \\
+\midrule
+%% TABLE_ROWS:tab:supervisor-comparison:0 %%
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Sizes of nontrivial d-bubbles that are not snarls. Each vertex is counted once, including both endpoints.}
+\label{tab:supervisor-sizes}
+\label{tab:dbubble-size-quartiles}
+\vspace{2mm}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Dataset & Unit & Bubbles & $Q_1$ & Median & $Q_3$ & Maximum \\
+\midrule
+%% TABLE_ROWS:tab:supervisor-sizes:0 %%
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Running time and memory on Pangene graphs. Memory is peak RSS in GiB. $^\dagger$ D-bubble results cover only regions between tips.}
+\label{tab:app-pangene-perf}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{4pt}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{llcccccccc}
+\toprule
+Graph type & Dataset & \multicolumn{2}{c}{\texttt{vg snarls}} & \multicolumn{2}{c}{Billi heuristic} & \multicolumn{2}{c}{\shortstack{BubbleFinder\\ultrabubbles}} & \multicolumn{2}{c}{\shortstack{BubbleFinder\\d-bubbles}} \\
+ & & Time & Memory (GiB) & Time & Memory (GiB) & Time & Memory (GiB) & Time & Memory (GiB) \\
+\midrule
+%% TABLE_ROWS:tab:app-pangene-perf:0 %%
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Running time and memory for ultrabubbles found by filtering d-bubbles with BubbleFinder. HPRC v2.1 uses GBZ; other datasets use GFA. $^\dagger$ Results cover only regions between tips.}
+\label{tab:app-ub-via-d}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llcc}
+\toprule
+Graph type & Dataset & Time & Memory (GiB) \\
+\midrule
+%% TABLE_ROWS:tab:app-ub-via-d:0 %%
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Nontrivial d-bubbles and snarls reported by vg on Pangene graphs. The last two columns count bubbles absent from the other output. $^\dagger$ D-bubbles cover only regions between tips.}
+\label{tab:app-pangene-comparison}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{4pt}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{llrrrrr}
+\toprule
+Graph type & Dataset & D-bubbles & vg snarls & \shortstack{Found by\\both} & \shortstack{Only\\d-bubbles} & \shortstack{Only\\vg snarls} \\
+\midrule
+%% TABLE_ROWS:tab:app-pangene-comparison:0 %%
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Sizes of nontrivial Pangene d-bubbles that are not snarls. Size sums protein lengths (aa), counting each vertex once, including both ends. $^\dagger$ Results cover only regions between tips.}
+\label{tab:app-pangene-sizes}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Dataset & Unit & Bubbles & $Q_1$ & Median & $Q_3$ & Maximum \\
+\midrule
+%% TABLE_ROWS:tab:app-pangene-sizes:0 %%
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Running times with one and eight threads on the main graphs (seconds). Speedup is $t_1/t_8$; the last column compares vg and BubbleFinder at eight threads.}
+\label{tab:threads-main-1-8}
+\renewcommand{\arraystretch}{1.35}
+\setlength{\tabcolsep}{5.5pt}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{llrrr@{\hspace{7mm}}rrr@{\hspace{5mm}}r}
+\toprule
+\multirow{2}{*}{Dataset} & \multirow{2}{*}{Input} & \multicolumn{3}{c}{\textbf{BubbleFinder d-bubbles}} & \multicolumn{3}{c}{\textbf{vg snarls}} & \shortstack{vg/BF time\\at 8 threads} \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}
+ & & 1 thread (s) & \textbf{8 threads (s)} & Speedup & 1 thread (s) & \textbf{8 threads (s)} & Speedup & \\
+\midrule
+%% TABLE_ROWS:tab:threads-main-1-8:0 %%
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Running times with one and eight threads on Pangene graphs (seconds), as in~\Cref{tab:threads-main-1-8}. $^\dagger$ BubbleFinder runs may not cover the entire graph.}
+\label{tab:threads-extra-1-8}
+\renewcommand{\arraystretch}{1.35}
+\setlength{\tabcolsep}{5.5pt}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{llrrr@{\hspace{7mm}}rrr@{\hspace{5mm}}r}
+\toprule
+\multirow{2}{*}{Dataset} & \multirow{2}{*}{Input} & \multicolumn{3}{c}{\textbf{BubbleFinder d-bubbles}} & \multicolumn{3}{c}{\textbf{vg snarls}} & \shortstack{vg/BF time\\at 8 threads} \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}
+ & & 1 thread (s) & \textbf{8 threads (s)} & Speedup & 1 thread (s) & \textbf{8 threads (s)} & Speedup & \\
+\midrule
+%% TABLE_ROWS:tab:threads-extra-1-8:0 %%
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{Peak memory (GiB) with one and eight threads. Input files held in tmpfs are not included. $^\dagger$ BubbleFinder runs may not cover the entire graph.}
+\label{tab:threads-memory-1-8}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{7pt}
+\begin{tabular}{llrr@{\hspace{10mm}}rr}
+\toprule
+Dataset & Input & \multicolumn{2}{c}{BubbleFinder d-bubbles} & \multicolumn{2}{c}{vg snarls} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}
+ & & 1 thread & \textbf{8 threads} & 1 thread & \textbf{8 threads} \\
+\midrule
+%% TABLE_ROWS:tab:threads-memory-1-8:0 %%
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Graph topology. The two parts show graph sizes and tips, then cut vertices and additional orientation vertices reported by BubbleFinder.}
+  \label{tab:app-topology}
+  \small
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{llrrrr}
+    \toprule
+    \multicolumn{6}{l}{\textbf{(a) Graph size and connectivity}} \\
+    \midrule
+    Graph type & Dataset & Nodes & Links & \shortstack{Connected\\components} & Tips \\
+    \midrule
+%% TABLE_ROWS:tab:app-topology:0 %%
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+  \par\medskip
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{llrrrr}
+    \toprule
+    \multicolumn{6}{l}{\textbf{(b) Cut vertices and other counts}} \\
+    \midrule
+    Graph type & Dataset & \shortstack{Cut\\vertices} & \shortstack{Components\\without tips} & \shortstack{Components without\\cut vertices} & \shortstack{Additional\\orientation vertices} \\
+    \midrule
+%% TABLE_ROWS:tab:app-topology:1 %%
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Total and nontrivial d-bubbles and snarls reported by vg. Nontrivial bubbles have at least one internal vertex. vg counts are output records. $^\dagger$ D-bubbles cover only regions between tips.}
+\label{tab:app-native-counts}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{4pt}
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{llrrrr}
+\toprule
+Graph type & Dataset & \multicolumn{2}{c}{BubbleFinder d-bubbles} & \multicolumn{2}{c}{Snarls reported by vg} \\
+ & & All & Nontrivial & All & Nontrivial \\
+\midrule
+%% TABLE_ROWS:tab:app-native-counts:0 %%
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Native bubble counts reported by vg, BubbleFinder and Billi. vg counts are output records. Failed denotes an unsuccessful run. For HPRC v2.1, Billi uses GFA and the other tools use GBZ.}
+  \label{tab:app-reference-counts}
+  \small
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{llrrrr}
+    \toprule
+    \multicolumn{6}{l}{\textbf{(a) Snarls reported by vg}} \\
+    \midrule
+    Graph type & Dataset & \shortstack{Ultrabubbles\\(all)} & \shortstack{Snarls\\(all)} & \shortstack{Non-ultrabubble\\snarls} & \shortstack{Ultrabubbles\\(nontrivial)} \\
+    \midrule
+%% TABLE_ROWS:tab:app-reference-counts:0 %%
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+  \par\medskip
+  \begin{adjustbox}{max width=\linewidth}
+  \begin{tabular}{llrrr}
+    \toprule
+    \multicolumn{5}{l}{\textbf{(b) BubbleFinder and Billi}} \\
+    \midrule
+    Graph type & Dataset & \multicolumn{2}{c}{BubbleFinder ultrabubbles} & \shortstack{Billi panbubbles\\(heuristic)} \\
+    \cmidrule(lr){3-4}
+    & & All & Nontrivial & \\
+    \midrule
+%% TABLE_ROWS:tab:app-reference-counts:1 %%
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}

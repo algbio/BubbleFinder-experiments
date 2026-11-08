@@ -1,0 +1,8 @@
+results_dir: results
+tables_dir: tables
+data_dir: data
+tools_dir: tools
+toolchain_lock: config/toolchain.lock.json
+bubblefinder_source: ../../BubbleFinder
+download_jobs: 4
+timeout_default_hours: 2

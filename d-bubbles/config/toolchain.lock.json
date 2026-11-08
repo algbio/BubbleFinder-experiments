@@ -1,0 +1,35 @@
+{
+  "schema": "bubblefinder-benchmark-toolchain-v1",
+  "campaign": "latest-tools-20261029-v1",
+  "resolved_utc": "2026-10-28T23:04:30.103702+00:00",
+  "policy": "Latest public stable release when one exists; otherwise default-branch HEAD. Revisions are frozen for this campaign.",
+  "tools": {
+    "vg": {
+      "repository": "https://github.com/vgteam/vg.git",
+      "selection": "stable-release",
+      "version": "1.78.0",
+      "release_tag": "v1.78.0",
+      "release_url": "https://github.com/vgteam/vg/releases/tag/v1.78.0",
+      "commit": "315509da9be8a4ca7c94631b471d0d835dbd7a33",
+      "asset_url": "https://github.com/vgteam/vg/releases/download/v1.78.0/vg",
+      "asset_sha256": "5ddfee24c34f3656b0e71a5c2ffb65275781a7353d9147ae6b5d7323029c7799"
+    },
+    "billi": {
+      "repository": "https://github.com/at-cg/billi.git",
+      "selection": "stable-release",
+      "version": "1.2",
+      "release_tag": "v1.2",
+      "release_url": "https://github.com/at-cg/billi/releases/tag/v1.2",
+      "commit": "0d5fd6a553d1d063f1a2900d6b3b6c100243e5e3",
+      "mode": "heuristic; decompose -w (no allele printing)"
+    },
+    "bubblegun": {
+      "repository": "https://github.com/fawaz-dabbaghieh/bubble_gun.git",
+      "selection": "stable-release",
+      "version": "1.2.0",
+      "release_tag": "v1.2.0",
+      "release_url": "https://github.com/fawaz-dabbaghieh/bubble_gun/releases/tag/v1.2.0",
+      "commit": "8394d044813074755dd90f5102782d4254f2a0fe"
+    }
+  }
+}

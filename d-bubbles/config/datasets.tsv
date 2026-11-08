@@ -1,0 +1,20 @@
+dataset	group	label	short_label	unit
+ecoli50.cleaned	pggb	E. coli (50 indiv.)	E. coli 50	bp
+Ecoli-v1.1-p0g30r5	Pangene	E. coli v1.1	E. coli v1.1	aa
+GCA.cleaned	dbg	M. xanthus (10 indiv.)	M. xanthus	bp
+Mtb152m-v1.1-p0a1	Pangene	M. tb 152m p0	M. tb 152m p0	aa
+Mtb152m-v1.1-p1a2	Pangene	M. tb 152m p1	M. tb 152m p1	aa
+Mtb152p-v1.1-p0a1	Pangene	M. tb 152p	M. tb 152p	aa
+mouse17_chr19.cleaned	pggb	Mouse Chr. 19 (17 indiv.)	Mouse Chr. 19	bp
+tomato23_chr2.cleaned	pggb	Tomato Chr. 2 (23 indiv.)	Tomato Chr. 2	bp
+primates_chr6.cleaned	pggb	Primate Chr. 6 (14 indiv.)	Primate Chr. 6	bp
+Ultrabubble_dataset_chr1.cleaned	vg	1000GP Chr. 1	1000GP Chr. 1	bp
+Ultrabubble_dataset_chr10.cleaned	vg	1000GP Chr. 10	1000GP Chr. 10	bp
+Ultrabubble_dataset_chr22.cleaned	vg	1000GP Chr. 22	1000GP Chr. 22	bp
+hprc-v1.1-mc-chm13	MC	HPRC v1.1 CHM13 (47 indiv.)	HPRC v1.1 CHM13	bp
+hprc-v2.0-mc-chm13	MC	HPRC v2.0 CHM13 (231 indiv.)	HPRC v2.0 CHM13	bp
+hprc-v2.1-mc-chm13	MC	HPRC v2.1 CHM13 (231 indiv.)	HPRC v2.1 CHM13	bp
+human100-v1.1-a1	Pangene	Human 100	Human 100	aa
+human100p10-v1.1-a1	Pangene	Human 100+10%	Human 100+10%	aa
+human472-1.1a2	Pangene	Human 472	Human 472	aa
+human472p10-1.1a2	Pangene	Human 472+10%	Human 472+10%	aa

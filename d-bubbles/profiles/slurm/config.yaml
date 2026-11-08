@@ -1,0 +1,66 @@
+# runtime values are in minutes
+
+
+executor: slurm
+latency-wait: 60
+default-resources:
+  # slurm_account: your_account
+  # slurm_partition: your_partition
+  runtime: 120
+  mem_mb: 8000
+  cpus_per_task: 2
+
+set-resources:
+  build_billi:
+    runtime: 120
+    mem_mb: 4000
+    cpus_per_task: 4
+  build_gfa_stats:
+    runtime: 60
+    mem_mb: 2000
+    cpus_per_task: 1
+  install_vg:
+    runtime: 60
+    mem_mb: 2000
+    cpus_per_task: 1
+  run_bf_sb_gfa_T:
+    runtime: 120
+    mem_mb: 180000
+    cpus_per_task: 2
+  run_bf_sb_gfa_noT:
+    runtime: 120
+    mem_mb: 180000
+    cpus_per_task: 2
+
+  run_vg_gbz_T:
+    runtime: 120
+    mem_mb: 180000
+    cpus_per_task: 2
+  run_vg_gbz_noT:
+    runtime: 120
+    mem_mb: 180000
+    cpus_per_task: 2
+  run_bf_gbz_T:
+    runtime: 120
+    mem_mb: 180000
+    cpus_per_task: 2
+  run_bf_gbz_noT:
+    runtime: 120
+    mem_mb: 180000
+    cpus_per_task: 2
+  d_tables:
+    runtime: 120
+    mem_mb: 8000
+    cpus_per_task: 1
+  generate_tables:
+    runtime: 120
+    mem_mb: 8000
+    cpus_per_task: 1
+  download_zenodo:
+    runtime: 240
+    mem_mb: 4000
+    cpus_per_task: 1
+  download_hprc:
+    runtime: 720
+    mem_mb: 4000
+    cpus_per_task: 1

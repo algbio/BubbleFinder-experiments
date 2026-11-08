@@ -1,0 +1,1492 @@
+import os
+import json
+import glob
+import shlex
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path("scripts").resolve()))
+from datasets import DATASETS as DATASET_INFO
+
+configfile: "config/benchmarks.yaml"
+
+TOOLCHAIN_LOCK = config.get("toolchain_lock", "config/toolchain.lock.json")
+with open(TOOLCHAIN_LOCK, encoding="ascii") as stream:
+    TOOLCHAIN = json.load(stream)
+CAMPAIGN = TOOLCHAIN["campaign"]
+RESULTS_DIR = config.get("results_dir", "results")
+TIME_BIN = config.get("time_bin", "/usr/bin/time")
+PYTHON = config.get("python", "python3")
+BF_STACK = config.get("bf_stack", 483183820800)
+ZENODO_RECORD = config.get("zenodo_record", "19209715")
+DATA_DIR = config.get("data_dir", "data")
+DATA_READY = config.get("prepared_inputs_stamp", os.path.join(DATA_DIR, ".download_all.done"))
+INPUT_ADMISSION = config.get("input_admission", os.path.join(DATA_DIR, "INPUT-ADMISSION.json"))
+TABLES_DIR = config.get("tables_dir", "tables")
+BENCH_TMPFS = config.get("benchmark_tmpfs", "/dev/shm")
+BF_SRC = config.get("bubblefinder_source", "../../BubbleFinder")
+PAPER_DIR = os.path.join(RESULTS_DIR, "paper")
+PAPER_FIGURES = os.path.join(TABLES_DIR, "figures")
+
+_TIMEOUT_DEFAULT_H = float(config.get("timeout_default_hours",
+                            config.get("timeout_hours", 2)))
+_TIMEOUT_PER_PROG  = config.get("timeout_per_program", {}) or {}
+
+def timeout_sec(program):
+    h = float(_TIMEOUT_PER_PROG.get(program, _TIMEOUT_DEFAULT_H))
+    return int(h * 3600)
+
+TIMEOUT_H   = _TIMEOUT_DEFAULT_H
+TIMEOUT_SEC = int(TIMEOUT_H * 3600)
+BENCH_WRAPPER = "scripts/run_bench.sh"
+
+localrules: download_zenodo, download_hprc, clone_billi, clone_spdlog, clone_bubblefinder, install_vg
+
+GFA_DIRS = config.get("gfa_dirs", [DATA_DIR, "GFAs", "zenodo_gfas",
+                                   "../ultrabubbles/data", "../ultrabubbles/GFAs",
+                                   "../ultrabubbles/zenodo_gfas"])
+
+HPRC_FILES = {
+    "hprc-v1.1-mc-chm13.gfa.gz":
+        "https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/freeze1/minigraph-cactus/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.gfa.gz",
+    "hprc-v1.1-mc-chm13.gbz":
+        "https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/freeze1/minigraph-cactus/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.gbz",
+    "hprc-v2.0-mc-chm13.gfa.gz":
+        "https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/scratch/2025_02_28_minigraph_cactus/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.gfa.gz",
+    "hprc-v2.0-mc-chm13.gbz":
+        "https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/scratch/2025_02_28_minigraph_cactus/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.gbz",
+    "hprc-v2.1-mc-chm13.gfa.gz":
+        "https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/release2/minigraph-cactus/v2.1/hprc-v2.1-mc-chm13/hprc-v2.1-mc-chm13.gfa.gz",
+    "hprc-v2.1-mc-chm13.gbz":
+        "https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/release2/minigraph-cactus/v2.1/hprc-v2.1-mc-chm13/hprc-v2.1-mc-chm13.gbz",
+}
+
+
+TOOLS_DIR = config.get("tools_dir", "tools")
+CC = config.get("cc", "gcc")
+CXX = config.get("cxx", "g++")
+SPDLOG_SRC = os.path.join(TOOLS_DIR, "spdlog-v1.15.3")
+SPDLOG_COMMIT = "6fa36017cfd5731d617e1a934f0e5ea9c4445b13"
+
+# Keep tool versions in separate directories.
+VG_TOOL = TOOLCHAIN["tools"]["vg"]
+BILLI_TOOL = TOOLCHAIN["tools"]["billi"]
+BILLI_REPO = BILLI_TOOL["repository"]
+BILLI_COMMIT = BILLI_TOOL["commit"]
+VG_VERSION = VG_TOOL["version"]
+
+BF_REPO = "https://github.com/algbio/BubbleFinder.git"
+BF_BIN = config.get("bubblefinder_bin", os.path.join(BF_SRC, "build", "BubbleFinder"))
+VG_BIN = os.path.join(TOOLS_DIR, "vg-" + VG_VERSION, "vg")
+BILLI_SRC = os.path.join(TOOLS_DIR, "billi-" + BILLI_COMMIT)
+BILLI_BIN = os.path.join(BILLI_SRC, "billi")
+GFA_STATS_BIN = os.path.join(TOOLS_DIR, "gfa_stats")
+
+
+DATASETS = config.get("datasets", list(DATASET_INFO))
+
+TOOL_VARIANTS = [
+    "vg_gfa_T", "vg_gfa_noT",
+    "bf_gfa_T", "bf_gfa_noT",
+    "billi", "gfa_stats", "vg_stats",
+    "vg_gbz_T", "vg_gbz_noT",
+    "bf_gbz_T", "bf_gbz_noT",
+    "d_bc_gfa", "d_bc_gbz",
+]
+
+
+TOOL_VARIANTS = config.get("tool_variants", TOOL_VARIANTS)
+if "bubblegun" in TOOL_VARIANTS:
+    raise ValueError("BubbleGun is excluded from new benchmark comparison manifests")
+if any(v in ("d_gfa", "d_gbz") for v in TOOL_VARIANTS):
+    raise ValueError("Use the d_bc_gfa and d_bc_gbz result variants for d-bubble benchmarks")
+
+def find_gfa(ds):
+    for d in GFA_DIRS:
+        p = os.path.join(d, ds + ".gfa")
+        if os.path.isfile(p):
+            return p
+    # If only .gfa.gz exists, return the expected .gfa path
+    for d in GFA_DIRS:
+        gz = os.path.join(d, ds + ".gfa.gz")
+        if os.path.isfile(gz):
+            return gz[:-3]  # strip .gz → will exist after decompression
+    return os.path.join(DATA_DIR, ds + ".gfa")
+
+def find_gbz(ds):
+    for d in GFA_DIRS:
+        p = os.path.join(d, ds + ".gbz")
+        if os.path.isfile(p):
+            return p
+    return os.path.join(DATA_DIR, ds + ".gbz") if ds in ("hprc-v1.1-mc-chm13", "hprc-v2.0-mc-chm13", "hprc-v2.1-mc-chm13") else None
+
+def gfa_fmt(_path):
+    return "gfa"
+
+def result_files_for(ds, tool):
+    R = RESULTS_DIR
+    if tool in ("d_bc_gfa", "d_bc_gbz"):
+        if tool.endswith("gbz") and find_gbz(ds) is None:
+            return []
+        return [f"{R}/{ds}.{tool}.receipt.json"]
+    if tool in ("vg_gbz_T", "vg_gbz_noT", "bf_gbz_T", "bf_gbz_noT"):
+        if find_gbz(ds) is None:
+            return []
+        return {
+            "vg_gbz_T":   [f"{R}/{ds}.vg_gbz.time"],
+            "vg_gbz_noT": [f"{R}/{ds}.vg_gbz_noT.time"],
+            "bf_gbz_T":   [f"{R}/{ds}.bf_gbz.time"],
+            "bf_gbz_noT": [f"{R}/{ds}.bf_gbz_noT.time"],
+        }.get(tool, [])
+    gfa = find_gfa(ds)
+    if gfa is None:
+        return []
+    fmt = gfa_fmt(gfa)
+    R = RESULTS_DIR
+    mapping = {
+        "vg_gfa_T":   [f"{R}/{ds}.vg_gfa.{fmt}.time"],
+        "vg_gfa_noT":  [f"{R}/{ds}.vg_gfa_noT.{fmt}.time"],
+        "bf_gfa_T":   [f"{R}/{ds}.bf_gfa.{fmt}.time"],
+        "bf_gfa_noT":  [f"{R}/{ds}.bf_gfa_noT.{fmt}.time"],
+        "bf_sb_gfa_T": [f"{R}/{ds}.bf_sb_gfa.{fmt}.time"],
+        "bf_sb_gfa_noT": [f"{R}/{ds}.bf_sb_gfa_noT.{fmt}.time"],
+        "billi":     [f"{R}/{ds}.billi.time"],
+        "gfa_stats":  [f"{R}/{ds}.gfa_stats"],
+        "vg_stats":   [f"{R}/{ds}.vg_stats"],
+    }
+    return mapping.get(tool, [])
+
+def all_result_files():
+    files = []
+    for ds in DATASETS:
+        for tool in TOOL_VARIANTS:
+            files.extend(result_files_for(ds, tool))
+    return [f for f in files if f]
+
+
+PAPER_DATASETS = config.get("paper_datasets", DATASETS)
+PAPER_GBZ = {"hprc-v1.1-mc-chm13", "hprc-v2.0-mc-chm13", "hprc-v2.1-mc-chm13"}
+PAPER_THREADS = config.get("paper_threads", [1, 8])
+GBZ_MAIN = "hprc-v2.1-mc-chm13"
+
+
+def paper_input(ds):
+    return find_gbz(ds) if ds in PAPER_GBZ else find_gfa(ds)
+
+
+def paper_ultrabubble_time(ds):
+    if ds == "hprc-v2.1-mc-chm13":
+        return os.path.join(RESULTS_DIR, ds + ".bf_gbz.time")
+    return os.path.join(RESULTS_DIR, ds + ".bf_gfa.gfa.time")
+
+
+def paper_ultrabubble_nontrivial(ds):
+    if ds == "hprc-v2.1-mc-chm13":
+        return os.path.join(RESULTS_DIR, ds + ".bf_gbz_noT.txt")
+    return os.path.join(RESULTS_DIR, ds + ".bf_gfa_noT.gfa.txt")
+
+
+def paper_ultrabubble_nontrivial_time(ds):
+    return paper_ultrabubble_nontrivial(ds)[:-len(".txt")] + ".time"
+
+
+def paper_vg_counts(ds, all_records):
+    if ds == "hprc-v2.1-mc-chm13":
+        return os.path.join(RESULTS_DIR, ds + (".vg_gbz.snarl_counts" if all_records else ".vg_gbz_noT.snarl_counts"))
+    return os.path.join(RESULTS_DIR, ds + (".vg_gfa.gfa.snarl_counts" if all_records else ".vg_gfa_noT.gfa.snarl_counts"))
+
+
+def paper_vg_catalogue_path(ds, suffix):
+    stem = ".vg_gbz" if ds == "hprc-v2.1-mc-chm13" else ".vg_gfa.gfa"
+    return os.path.join(RESULTS_DIR, ds + stem + suffix)
+
+
+def paper_d_catalogue_path(ds, suffix):
+    if ds == "hprc-v2.1-mc-chm13":
+        return os.path.join(PAPER_DIR, ds + ".d.1" + suffix)
+    return os.path.join(RESULTS_DIR, ds + ".d_bc_gfa" + suffix)
+
+
+def paper_gfa_memory(ds):
+    if ds in {"hprc-v2.0-mc-chm13", "hprc-v2.1-mc-chm13"}:
+        return 1800000
+    if ds == "hprc-v1.1-mc-chm13":
+        return 600000
+    if DATASET_INFO.get(ds, {}).get("group") == "Pangene":
+        return 16000
+    return 180000
+
+
+rule all:
+    input:
+        expand(os.path.join(PAPER_DIR, "{ds}.physical.tsv"), ds=PAPER_DATASETS),
+        expand(os.path.join(PAPER_DIR, "{ds}.quartiles.tsv"), ds=PAPER_DATASETS),
+        expand(os.path.join(PAPER_DIR, "{ds}.overlaps.tsv"), ds=PAPER_DATASETS),
+        expand(os.path.join(PAPER_DIR, "{ds}.classification.json"), ds=PAPER_DATASETS),
+        expand(os.path.join(PAPER_DIR, "{ds}.d.{jobs}.receipt.json"), ds=PAPER_DATASETS, jobs=PAPER_THREADS),
+        expand(os.path.join(PAPER_DIR, "{ds}.thread-consistency.json"), ds=PAPER_DATASETS),
+        expand(os.path.join(PAPER_DIR, "{ds}.u.1.receipt.json"), ds=PAPER_DATASETS),
+        expand(os.path.join(PAPER_DIR, "{ds}.vg.{jobs}.time"), ds=PAPER_DATASETS, jobs=PAPER_THREADS),
+        os.path.join(TABLES_DIR, "paper-results.tsv"),
+        os.path.join(TABLES_DIR, "paper-results.tex"),
+        os.path.join(PAPER_FIGURES, "overlaps.tex"),
+        os.path.join(PAPER_FIGURES, "four-set.tex"),
+
+
+rule clone_bubblefinder:
+    output:
+        cmake=os.path.join(BF_SRC, "CMakeLists.txt"),
+    shell:
+        "git clone --recursive {BF_REPO:q} {BF_SRC:q}"
+
+
+rule clone_spdlog:
+    output:
+        cmake=os.path.join(SPDLOG_SRC, "CMakeLists.txt"),
+    shell:
+        """
+        set -euo pipefail
+        mkdir -p {TOOLS_DIR:q}
+        if [ ! -d {SPDLOG_SRC:q}/.git ]; then
+            if [ -e {SPDLOG_SRC:q} ]; then
+                [ -d {SPDLOG_SRC:q} ] && [ -z "$(ls -A {SPDLOG_SRC:q})" ] || \
+                    {{ echo "Existing non-empty or non-directory path retained" >&2; exit 1; }}
+            fi
+            git clone --branch v1.15.3 --depth 1 https://github.com/gabime/spdlog.git {SPDLOG_SRC:q}
+        fi
+        test "$(git -C {SPDLOG_SRC:q} rev-parse HEAD)" = {SPDLOG_COMMIT:q}
+        test -f {output.cmake:q}
+        """
+
+
+if os.path.normpath(BF_BIN) == os.path.normpath(os.path.join(BF_SRC, "build/BubbleFinder")):
+    rule build_bubblefinder:
+        input:
+            cmake=os.path.join(BF_SRC, "CMakeLists.txt"),
+            spdlog=os.path.join(SPDLOG_SRC, "CMakeLists.txt"),
+            sources=[path for base in ("src", "external/clsd", "external/spqr-rust/src",
+                                       "external/spqr-rust/include", "external/gbz")
+                     for pattern in ("*.cpp", "*.hpp", "*.h", "*.cc", "*.c", "*.rs",
+                                     "*.cmake", "*.in", "CMakeLists.txt")
+                     for path in glob.glob(os.path.join(BF_SRC, base, "**", pattern), recursive=True)]
+                    + glob.glob(os.path.join(BF_SRC, "external/spqr-rust", "Cargo.*"))
+                    + glob.glob(os.path.join(BF_SRC, "external/spqr-rust", "rust-toolchain*"))
+                    + glob.glob(os.path.join(BF_SRC, "external/spqr-rust", "*.rs"))
+                    + glob.glob(os.path.join(SPDLOG_SRC, "include", "**", "*.h"), recursive=True),
+        output:
+            bin=BF_BIN,
+        threads: 4
+        resources:
+            mem_mb=16000,
+            runtime=120,
+            cpus_per_task=lambda wc, threads: threads,
+        shell:
+            """
+            set -euo pipefail
+            export CC={CC:q}
+            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER={CC:q}
+            cmake -S {BF_SRC:q} -B {BF_SRC:q}/build -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER={CC:q} \
+                -DCMAKE_CXX_COMPILER={CXX:q} \
+                -DFETCHCONTENT_SOURCE_DIR_SPDLOG="$(realpath {SPDLOG_SRC:q})"
+            (cd {BF_SRC:q}/external/spqr-rust && cargo build --release --manifest-path Cargo.toml)
+            cmake --build {BF_SRC:q}/build --target BubbleFinder --parallel {threads}
+            test -x {output.bin:q}
+            """
+
+
+rule pin_bubblefinder:
+    input:
+        bin=BF_BIN,
+    output:
+        sha=os.path.join(TOOLS_DIR, "paper_bubblefinder.sha256"),
+    params:
+        expected=config.get("bubblefinder_sha256", ""),
+    shell:
+        """
+        set -euo pipefail
+        mkdir -p {TOOLS_DIR:q}
+        sha=$(sha256sum {input.bin:q} | cut -d ' ' -f1)
+        expected={params.expected:q}
+        if [ -n "$expected" ] && [ "$sha" != "$expected" ]; then
+            echo "BubbleFinder SHA-256 differs from the configured pin" >&2; exit 1
+        fi
+        printf '%s\n' "$sha" > {output.sha:q}
+        """
+
+
+rule build_gfa_stats:
+    input:
+        src="scripts/gfa_stats.cpp",
+    output:
+        bin=GFA_STATS_BIN,
+    shell:
+        """
+        set -euo pipefail
+        mkdir -p $(dirname {output.bin})
+        {CXX:q} -O3 -std=c++17 -o {output.bin} {input.src}
+        echo "gfa_stats compiled"
+        """
+
+rule install_vg:
+    input:
+        lock=TOOLCHAIN_LOCK,
+    output:
+        bin=VG_BIN,
+    params:
+        version=VG_VERSION,
+        url=VG_TOOL["asset_url"],
+        sha=VG_TOOL["asset_sha256"],
+    shell:
+        """
+        set -euo pipefail
+        mkdir -p $(dirname {output.bin:q})
+        curl -fL -o {output.bin:q}.part {params.url:q}
+        echo "{params.sha}  {output.bin}.part" | sha256sum --check
+        chmod +x {output.bin:q}.part
+        mv {output.bin:q}.part {output.bin:q}
+        """
+
+
+rule clone_billi:
+    input:
+        lock=TOOLCHAIN_LOCK,
+    output:
+        stamp=os.path.join(BILLI_SRC, ".cloned"),
+    params:
+        repo=BILLI_REPO,
+        commit=BILLI_COMMIT,
+        srcdir=BILLI_SRC,
+    shell:
+        """
+        set -euo pipefail
+        mkdir -p {TOOLS_DIR:q}
+        if [ ! -d {params.srcdir:q}/.git ]; then
+            if [ -e {params.srcdir:q} ]; then
+                [ -d {params.srcdir:q} ] && [ -z "$(ls -A {params.srcdir:q})" ] || \
+                    {{ echo "Existing non-empty or non-directory path retained" >&2; exit 1; }}
+            fi
+            git clone {params.repo:q} {params.srcdir:q}
+        fi
+        git -C {params.srcdir:q} checkout --detach {params.commit:q}
+        test "$(git -C {params.srcdir:q} rev-parse HEAD)" = {params.commit:q}
+        touch {output.stamp:q}
+        """
+
+rule build_billi:
+    input:
+        stamp=os.path.join(BILLI_SRC, ".cloned"),
+        lock=TOOLCHAIN_LOCK,
+        recorder="scripts/record_tool_install.py",
+    output:
+        bin=BILLI_BIN,
+        receipt=BILLI_BIN + ".toolchain-install.json",
+    params:
+        srcdir=BILLI_SRC,
+    shell:
+        """
+        set -euo pipefail
+        test "$(git -C {params.srcdir:q} rev-parse HEAD)" = {BILLI_COMMIT:q}
+        make -C {params.srcdir:q} CXX={CXX:q} -j${{SLURM_CPUS_PER_TASK:-1}}
+        {PYTHON:q} {input.recorder:q} --tool billi --commit {BILLI_COMMIT:q} --executable {output.bin:q}
+        """
+
+
+rule download_zenodo:
+    input:
+        script="scripts/download_inputs.py",
+        datasets="scripts/datasets.py",
+        names="config/datasets.tsv",
+    output:
+        stamp=os.path.join(DATA_DIR, ".zenodo_{record}.done".format(record=ZENODO_RECORD)),
+        manifest=os.path.join(DATA_DIR, "zenodo-downloads.json"),
+    params:
+        directories=" ".join("--directory " + shlex.quote(d) for d in GFA_DIRS),
+        jobs=config.get("download_jobs", 4),
+        datasets=" ".join("--dataset " + ds for ds in DATASETS),
+    shell:
+        "{PYTHON:q} {input.script:q} zenodo --data {DATA_DIR:q} --manifest {output.manifest:q} --stamp {output.stamp:q} --record {ZENODO_RECORD:q} --jobs {params.jobs} {params.directories} {params.datasets}"
+
+rule download_hprc:
+    input:
+        script="scripts/download_inputs.py",
+        datasets="scripts/datasets.py",
+        names="config/datasets.tsv",
+    output:
+        stamp=os.path.join(DATA_DIR, ".hprc.done"),
+        manifest=os.path.join(DATA_DIR, "hprc-downloads.json"),
+    params:
+        directories=" ".join("--directory " + shlex.quote(d) for d in GFA_DIRS),
+        jobs=config.get("download_jobs", 4),
+        datasets=" ".join("--dataset " + ds for ds in DATASETS),
+    shell:
+        "{PYTHON:q} {input.script:q} hprc --data {DATA_DIR:q} --manifest {output.manifest:q} --stamp {output.stamp:q} --gbz --jobs {params.jobs} {params.directories} {params.datasets}"
+
+rule download_all:
+    input:
+        zenodo=os.path.join(DATA_DIR, "zenodo-downloads.json"),
+        hprc=os.path.join(DATA_DIR, "hprc-downloads.json"),
+        script="scripts/prepare_inputs.py",
+    output:
+        ready=os.path.join(DATA_DIR, ".download_all.done"),
+        admission=os.path.join(DATA_DIR, "INPUT-ADMISSION.json"),
+    resources:
+        mem_mb=8000,
+        runtime=1440,
+    shell:
+        "{PYTHON:q} {input.script:q} --data {DATA_DIR:q} --manifest {input.zenodo:q} --manifest {input.hprc:q} --ready {output.ready:q}"
+
+
+rule generate_tables:
+    input:
+        lock=TOOLCHAIN_LOCK,
+        ready=DATA_READY,
+        results=all_result_files(),
+        script="scripts/make_table.py",
+        guard="scripts/toolchain_provenance.py",
+    output:
+        bubble=os.path.join(TABLES_DIR, "bubble_table.tex"),
+        gfa=os.path.join(TABLES_DIR, "gfa_table.tex"),
+        stats=os.path.join(TABLES_DIR, "graph_stats_table.tex"),
+        bench=os.path.join(TABLES_DIR, "bench_table.tex"),
+        tsv=os.path.join(TABLES_DIR, "bench_summary.tsv"),
+    shell:
+        "{PYTHON:q} {input.guard:q} check-results --lock {input.lock:q} --results {RESULTS_DIR:q} && mkdir -p {TABLES_DIR:q} && {PYTHON:q} {input.script:q} {RESULTS_DIR:q} {TABLES_DIR:q}"
+
+rule tables_only:
+    """Regenerate only active d-bubble tables from available verified results."""
+    input:
+        lock=TOOLCHAIN_LOCK,
+        script="scripts/d_table.py",
+    output:
+        touch(os.path.join(TABLES_DIR, ".tables_only.done")),
+    shell:
+        "mkdir -p {TABLES_DIR:q} && {PYTHON:q} {input.script:q} {RESULTS_DIR:q} {TABLES_DIR:q} --stem d_bubble_comparison --toolchain-lock {input.lock:q}"
+
+
+rule run_vg_gfa_T:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        lock=TOOLCHAIN_LOCK,
+        bin=VG_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.vg_gfa.{fmt}.time"),
+        provenance=os.path.join(RESULTS_DIR, "{ds}.vg_gfa.{fmt}.time") + ".toolchain.json",
+        pb=os.path.join(RESULTS_DIR, "{ds}.vg_gfa.{fmt}.snarls.pb"),
+        log=os.path.join(RESULTS_DIR, "{ds}.vg_gfa.{fmt}.log"),
+        bubbles=os.path.join(RESULTS_DIR, "{ds}.vg_gfa.{fmt}.pairs"),
+        ub_bubbles=os.path.join(RESULTS_DIR, "{ds}.vg_gfa.{fmt}.ub.pairs"),
+        counts=os.path.join(RESULTS_DIR, "{ds}.vg_gfa.{fmt}.snarl_counts"),
+        ub_count=os.path.join(RESULTS_DIR, "{ds}.vg_gfa.{fmt}.ub"),
+    wildcard_constraints:
+        fmt="gfa",
+    resources:
+        mem_mb=lambda wc: paper_gfa_memory(wc.ds),
+        runtime=1440,
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("vg_gfa_T"),
+    shell:
+        """
+        set -euo pipefail
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
+        mkdir -p "$R"
+        scratch=$(mktemp -d {BENCH_TMPFS:q}/paper-vg-catalogue.XXXXXXXX)
+        trap 'rm -rf "$scratch"' EXIT
+        staged="$scratch/$(basename {params.gfa:q})"
+        cp {params.gfa:q} "$staged"
+        cmp -s {params.gfa:q} "$staged"
+        graph_sha=$({PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q} --print-sha256)
+        BENCH_GRAPH_SHA256="$graph_sha" BENCH_PYTHON={PYTHON:q} BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=vg BENCH_TOOLCHAIN_EXE={VG_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} snarls -T -A integrated -t 1 '$staged' > '$scratch/snarls.pb' 2> '$scratch/vg.log'"
+        cp "$scratch/snarls.pb" {output.pb:q}
+        cp "$scratch/vg.log" {output.log:q}
+        if grep -q "^EXIT_CODE=" {output.time:q}; then
+            echo "vg failed; its output cannot be used for comparisons" >&2
+            exit 1
+        fi
+        {input.bin:q} view -R -j {output.pb:q} | {PYTHON:q} scripts/bubbles.py vg \
+            --bubbles {output.bubbles:q} --ub-bubbles {output.ub_bubbles:q} --counts {output.counts:q}
+        grep '^n_ub' {output.counts:q} > {output.ub_count:q}
+        """
+
+rule run_vg_gfa_noT:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        lock=TOOLCHAIN_LOCK,
+        bin=VG_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.vg_gfa_noT.{fmt}.time"),
+        provenance=os.path.join(RESULTS_DIR, "{ds}.vg_gfa_noT.{fmt}.time") + ".toolchain.json",
+        pb=os.path.join(RESULTS_DIR, "{ds}.vg_gfa_noT.{fmt}.snarls.pb"),
+        log=os.path.join(RESULTS_DIR, "{ds}.vg_gfa_noT.{fmt}.log"),
+        bubbles=os.path.join(RESULTS_DIR, "{ds}.vg_gfa_noT.{fmt}.pairs"),
+        counts=os.path.join(RESULTS_DIR, "{ds}.vg_gfa_noT.{fmt}.snarl_counts"),
+        ub_count=os.path.join(RESULTS_DIR, "{ds}.vg_gfa_noT.{fmt}.ub"),
+    wildcard_constraints:
+        fmt="gfa",
+    resources:
+        mem_mb=lambda wc: paper_gfa_memory(wc.ds),
+        runtime=1440,
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("vg_gfa_noT"),
+    shell:
+        """
+        set -euo pipefail
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
+        mkdir -p "$R"
+        scratch=$(mktemp -d {BENCH_TMPFS:q}/paper-vg-catalogue.XXXXXXXX)
+        trap 'rm -rf "$scratch"' EXIT
+        staged="$scratch/$(basename {params.gfa:q})"
+        cp {params.gfa:q} "$staged"
+        cmp -s {params.gfa:q} "$staged"
+        graph_sha=$({PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q} --print-sha256)
+        BENCH_GRAPH_SHA256="$graph_sha" BENCH_PYTHON={PYTHON:q} BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=vg BENCH_TOOLCHAIN_EXE={VG_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} snarls -A integrated -t 1 '$staged' > '$scratch/snarls.pb' 2> '$scratch/vg.log'"
+        cp "$scratch/snarls.pb" {output.pb:q}
+        cp "$scratch/vg.log" {output.log:q}
+        if grep -q '^EXIT_CODE=' {output.time:q}; then echo "vg failed; no catalogue" >&2; exit 1; fi
+        {input.bin:q} view -R -j {output.pb:q} | {PYTHON:q} scripts/bubbles.py vg \
+            --bubbles {output.bubbles:q} --counts {output.counts:q}
+        grep '^n_ub' {output.counts:q} > {output.ub_count:q}
+        """
+
+rule run_bf_gfa_T:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        lock=TOOLCHAIN_LOCK,
+        bin=BF_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.bf_gfa.{fmt}.time"),
+        provenance=os.path.join(RESULTS_DIR, "{ds}.bf_gfa.{fmt}.time") + ".toolchain.json",
+        bubbles=os.path.join(RESULTS_DIR, "{ds}.bf_gfa.{fmt}.txt"),
+        log=os.path.join(RESULTS_DIR, "{ds}.bf_gfa.{fmt}.log"),
+    resources:
+        mem_mb=lambda wc: paper_gfa_memory(wc.ds),
+        runtime=720,
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_gfa_T"),
+    shell:
+        """
+        set -euo pipefail
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
+        mkdir -p "$R"
+        scratch=$(mktemp -d {BENCH_TMPFS:q}/paper-bf-u.XXXXXXXX)
+        trap 'rm -rf "$scratch"' EXIT
+        staged="$scratch/$(basename {params.gfa:q})"
+        cp {params.gfa:q} "$staged"
+        cmp -s {params.gfa:q} "$staged"
+        graph_sha=$({PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q} --print-sha256)
+        BENCH_GRAPH_SHA256="$graph_sha" BENCH_PYTHON={PYTHON:q} BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=bubblefinder BENCH_TOOLCHAIN_EXE={BF_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles -T -g '$staged' -o '$scratch/bubbles.txt' -j 1 -m {BF_STACK} > '$scratch/bf.log' 2>&1"
+        cp "$scratch/bf.log" {output.log:q}
+        if ! grep -q '^EXIT_CODE=' {output.time:q}; then cp "$scratch/bubbles.txt" {output.bubbles:q}; else : > {output.bubbles:q}; fi
+        """
+
+rule run_bf_gfa_noT:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        lock=TOOLCHAIN_LOCK,
+        bin=BF_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.bf_gfa_noT.{fmt}.time"),
+        provenance=os.path.join(RESULTS_DIR, "{ds}.bf_gfa_noT.{fmt}.time") + ".toolchain.json",
+        bubbles=os.path.join(RESULTS_DIR, "{ds}.bf_gfa_noT.{fmt}.txt"),
+        log=os.path.join(RESULTS_DIR, "{ds}.bf_gfa_noT.{fmt}.log"),
+    resources:
+        mem_mb=lambda wc: paper_gfa_memory(wc.ds),
+        runtime=720,
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_gfa_noT"),
+    shell:
+        """
+        set -euo pipefail
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
+        mkdir -p "$R"
+        scratch=$(mktemp -d {BENCH_TMPFS:q}/paper-bf-u.XXXXXXXX)
+        trap 'rm -rf "$scratch"' EXIT
+        staged="$scratch/$(basename {params.gfa:q})"
+        cp {params.gfa:q} "$staged"
+        cmp -s {params.gfa:q} "$staged"
+        graph_sha=$({PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q} --print-sha256)
+        BENCH_GRAPH_SHA256="$graph_sha" BENCH_PYTHON={PYTHON:q} BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=bubblefinder BENCH_TOOLCHAIN_EXE={BF_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles -g '$staged' -o '$scratch/bubbles.txt' -j 1 -m {BF_STACK} > '$scratch/bf.log' 2>&1"
+        cp "$scratch/bf.log" {output.log:q}
+        if grep -q '^EXIT_CODE=' {output.time:q}; then echo "BubbleFinder ultrabubbles failed" >&2; exit 1; fi
+        cp "$scratch/bubbles.txt" {output.bubbles:q}
+        """
+
+rule run_bf_sb_gfa_T:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        lock=TOOLCHAIN_LOCK,
+        bin=BF_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.bf_sb_gfa.{fmt}.time"),
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_sb_gfa_T"),
+    shell:
+        """
+        set -euo pipefail
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
+        BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=bubblefinder BENCH_TOOLCHAIN_EXE={BF_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles --doubled -T -g {params.gfa} -o $R/$ds.bf_sb_gfa.$fmt.txt -j 1 -m {BF_STACK} > $R/$ds.bf_sb_gfa.$fmt.log 2>&1"
+        """
+
+rule run_bf_sb_gfa_noT:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        lock=TOOLCHAIN_LOCK,
+        bin=BF_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.bf_sb_gfa_noT.{fmt}.time"),
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_sb_gfa_noT"),
+    shell:
+        """
+        set -euo pipefail
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        ds="{wildcards.ds}"; fmt="{wildcards.fmt}"; R="{params.R}"
+        BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=bubblefinder BENCH_TOOLCHAIN_EXE={BF_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles --doubled -g {params.gfa} -o $R/$ds.bf_sb_gfa_noT.$fmt.txt -j 1 -m {BF_STACK} > $R/$ds.bf_sb_gfa_noT.$fmt.log 2>&1"
+        """
+
+rule run_billi:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        lock=TOOLCHAIN_LOCK,
+        bin=BILLI_BIN,
+        install_receipt=BILLI_BIN + ".toolchain-install.json",
+        parser="scripts/parse_billi.py",
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.billi.time"),
+        provenance=os.path.join(RESULTS_DIR, "{ds}.billi.time") + ".toolchain.json",
+        log=os.path.join(RESULTS_DIR, "{ds}.billi.log"),
+        rows=os.path.join(RESULTS_DIR, "{ds}.billi.txt"),
+        counts=os.path.join(RESULTS_DIR, "{ds}.billi.counts"),
+    resources:
+        mem_mb=lambda wc: paper_gfa_memory(wc.ds),
+        runtime=720,
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("billi"),
+    shell:
+        """
+        set -euo pipefail
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        ds="{wildcards.ds}"; R="{params.R}"
+        mkdir -p "$R"
+        scratch=$(mktemp -d {BENCH_TMPFS:q}/paper-billi.XXXXXXXX)
+        trap 'rm -rf "$scratch"' EXIT
+        staged="$scratch/$(basename {params.gfa:q})"
+        cp {params.gfa:q} "$staged"
+        cmp -s {params.gfa:q} "$staged"
+        graph_sha=$({PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q} --print-sha256)
+        BENCH_GRAPH_SHA256="$graph_sha" BENCH_PYTHON={PYTHON:q} BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=billi BENCH_TOOLCHAIN_EXE={BILLI_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} decompose -w -i '$staged' > '$scratch/billi.log' 2>&1"
+        cp "$scratch/billi.log" {output.log:q}
+        if ! grep -q "^EXIT_CODE=" {output.time}; then
+            {PYTHON:q} {input.parser:q} {output.log:q} --rows {output.rows:q} --counts {output.counts:q}
+        else
+            : > {output.rows:q}
+            printf 'status\tfailed\n' > {output.counts:q}
+        fi
+        """
+
+rule run_gfa_stats:
+    input:
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        bin=GFA_STATS_BIN,
+    output:
+        stats=os.path.join(RESULTS_DIR, "{ds}.gfa_stats"),
+        empty=os.path.join(RESULTS_DIR, "{ds}.empty.pairs"),
+    resources:
+        mem_mb=lambda wc: paper_gfa_memory(wc.ds),
+        runtime=720,
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        tsec=lambda wc: timeout_sec("gfa_stats"),
+    shell:
+        """
+        set -euo pipefail
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        {PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q}
+        TMP="{output.stats}.tmp"
+        rm -f "$TMP"
+        {input.bin} "{params.gfa}" "{output.empty}" > "$TMP" 2>/dev/null
+        {PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q}
+        mv "$TMP" {output.stats}
+        """
+
+rule compute_vg_stats:
+    input:
+        ready=DATA_READY,
+        bin=VG_BIN,
+    output:
+        stats=os.path.join(RESULTS_DIR, "{ds}.vg_stats"),
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        tsec=lambda wc: timeout_sec("gfa_stats"),
+    shell:
+        """
+        set -euo pipefail
+        [ ! -f "{params.gfa}" ] && [ -f "{params.gfa}.gz" ] && gunzip -k "{params.gfa}.gz" || true
+        TMP="{output.stats}.tmp"
+        rm -f "$TMP"
+        {input.bin} stats -N -E "{params.gfa}" 2>/dev/null \
+            | paste <(printf "nodes\\nedges") - > "$TMP"
+        mv "$TMP" {output.stats}
+        """
+
+rule run_vg_gbz_T:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        lock=TOOLCHAIN_LOCK,
+        bin=VG_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.vg_gbz.time"),
+        provenance=os.path.join(RESULTS_DIR, "{ds}.vg_gbz.time") + ".toolchain.json",
+        pb=os.path.join(RESULTS_DIR, "{ds}.vg_gbz.snarls.pb"),
+        log=os.path.join(RESULTS_DIR, "{ds}.vg_gbz.log"),
+        bubbles=os.path.join(RESULTS_DIR, "{ds}.vg_gbz.pairs"),
+        ub_bubbles=os.path.join(RESULTS_DIR, "{ds}.vg_gbz.ub.pairs"),
+        counts=os.path.join(RESULTS_DIR, "{ds}.vg_gbz.snarl_counts"),
+        ub_count=os.path.join(RESULTS_DIR, "{ds}.vg_gbz.ub"),
+    params:
+        gbz=lambda wc: find_gbz(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("vg_gbz_T"),
+    shell:
+        """
+        set -euo pipefail
+        ds="{wildcards.ds}"; R="{params.R}"
+        mkdir -p "$R"
+        scratch=$(mktemp -d {BENCH_TMPFS:q}/paper-vg-catalogue.XXXXXXXX)
+        trap 'rm -rf "$scratch"' EXIT
+        staged="$scratch/$(basename {params.gbz:q})"
+        cp {params.gbz:q} "$staged"
+        cmp -s {params.gbz:q} "$staged"
+        graph_sha=$({PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gbz:q} --print-sha256)
+        BENCH_GRAPH_SHA256="$graph_sha" BENCH_PYTHON={PYTHON:q} BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=vg BENCH_TOOLCHAIN_EXE={VG_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} snarls -T -A integrated -t 1 '$staged' > '$scratch/snarls.pb' 2> '$scratch/vg.log'"
+        cp "$scratch/snarls.pb" {output.pb:q}
+        cp "$scratch/vg.log" {output.log:q}
+        if grep -q '^EXIT_CODE=' {output.time:q}; then echo "vg failed; no catalogue" >&2; exit 1; fi
+        {input.bin:q} view -R -j {output.pb:q} | {PYTHON:q} scripts/bubbles.py vg \
+            --bubbles {output.bubbles:q} --ub-bubbles {output.ub_bubbles:q} --counts {output.counts:q}
+        grep '^n_ub' {output.counts:q} > {output.ub_count:q}
+        """
+
+rule run_vg_gbz_noT:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        lock=TOOLCHAIN_LOCK,
+        bin=VG_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.vg_gbz_noT.time"),
+        provenance=os.path.join(RESULTS_DIR, "{ds}.vg_gbz_noT.time") + ".toolchain.json",
+        pb=os.path.join(RESULTS_DIR, "{ds}.vg_gbz_noT.snarls.pb"),
+        log=os.path.join(RESULTS_DIR, "{ds}.vg_gbz_noT.log"),
+        bubbles=os.path.join(RESULTS_DIR, "{ds}.vg_gbz_noT.pairs"),
+        counts=os.path.join(RESULTS_DIR, "{ds}.vg_gbz_noT.snarl_counts"),
+        ub_count=os.path.join(RESULTS_DIR, "{ds}.vg_gbz_noT.ub"),
+    params:
+        gbz=lambda wc: find_gbz(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("vg_gbz_noT"),
+    shell:
+        """
+        set -euo pipefail
+        ds="{wildcards.ds}"; R="{params.R}"
+        mkdir -p "$R"
+        scratch=$(mktemp -d {BENCH_TMPFS:q}/paper-vg-catalogue.XXXXXXXX)
+        trap 'rm -rf "$scratch"' EXIT
+        staged="$scratch/$(basename {params.gbz:q})"
+        cp {params.gbz:q} "$staged"
+        cmp -s {params.gbz:q} "$staged"
+        graph_sha=$({PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gbz:q} --print-sha256)
+        BENCH_GRAPH_SHA256="$graph_sha" BENCH_PYTHON={PYTHON:q} BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=vg BENCH_TOOLCHAIN_EXE={VG_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} snarls -A integrated -t 1 '$staged' > '$scratch/snarls.pb' 2> '$scratch/vg.log'"
+        cp "$scratch/snarls.pb" {output.pb:q}
+        cp "$scratch/vg.log" {output.log:q}
+        if grep -q '^EXIT_CODE=' {output.time:q}; then echo "vg failed; no catalogue" >&2; exit 1; fi
+        {input.bin:q} view -R -j {output.pb:q} | {PYTHON:q} scripts/bubbles.py vg \
+            --bubbles {output.bubbles:q} --counts {output.counts:q}
+        grep '^n_ub' {output.counts:q} > {output.ub_count:q}
+        """
+
+rule run_bf_gbz_T:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        lock=TOOLCHAIN_LOCK,
+        bin=BF_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.bf_gbz.time"),
+        provenance=os.path.join(RESULTS_DIR, "{ds}.bf_gbz.time") + ".toolchain.json",
+        bubbles=os.path.join(RESULTS_DIR, "{ds}.bf_gbz.txt"),
+        log=os.path.join(RESULTS_DIR, "{ds}.bf_gbz.log"),
+    params:
+        gbz=lambda wc: find_gbz(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_gbz_T"),
+    shell:
+        """
+        set -euo pipefail
+        ds="{wildcards.ds}"; R="{params.R}"
+        mkdir -p "$R"
+        scratch=$(mktemp -d {BENCH_TMPFS:q}/paper-bf-u.XXXXXXXX)
+        trap 'rm -rf "$scratch"' EXIT
+        staged="$scratch/$(basename {params.gbz:q})"
+        cp {params.gbz:q} "$staged"
+        cmp -s {params.gbz:q} "$staged"
+        graph_sha=$({PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gbz:q} --print-sha256)
+        BENCH_GRAPH_SHA256="$graph_sha" BENCH_PYTHON={PYTHON:q} BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=bubblefinder BENCH_TOOLCHAIN_EXE={BF_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles -T -g '$staged' -o '$scratch/bubbles.txt' -j 1 -m {BF_STACK} > '$scratch/bf.log' 2>&1"
+        cp "$scratch/bf.log" {output.log:q}
+        if ! grep -q '^EXIT_CODE=' {output.time:q}; then cp "$scratch/bubbles.txt" {output.bubbles:q}; else : > {output.bubbles:q}; fi
+        """
+
+rule run_bf_gbz_noT:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        lock=TOOLCHAIN_LOCK,
+        bin=BF_BIN,
+    output:
+        time=os.path.join(RESULTS_DIR, "{ds}.bf_gbz_noT.time"),
+        provenance=os.path.join(RESULTS_DIR, "{ds}.bf_gbz_noT.time") + ".toolchain.json",
+        bubbles=os.path.join(RESULTS_DIR, "{ds}.bf_gbz_noT.txt"),
+        log=os.path.join(RESULTS_DIR, "{ds}.bf_gbz_noT.log"),
+    params:
+        gbz=lambda wc: find_gbz(wc.ds),
+        R=RESULTS_DIR,
+        tsec=lambda wc: timeout_sec("bf_gbz_noT"),
+    shell:
+        """
+        set -euo pipefail
+        ds="{wildcards.ds}"; R="{params.R}"
+        mkdir -p "$R"
+        scratch=$(mktemp -d {BENCH_TMPFS:q}/paper-bf-u.XXXXXXXX)
+        trap 'rm -rf "$scratch"' EXIT
+        staged="$scratch/$(basename {params.gbz:q})"
+        cp {params.gbz:q} "$staged"
+        cmp -s {params.gbz:q} "$staged"
+        graph_sha=$({PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gbz:q} --print-sha256)
+        BENCH_GRAPH_SHA256="$graph_sha" BENCH_PYTHON={PYTHON:q} BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=bubblefinder BENCH_TOOLCHAIN_EXE={BF_BIN:q} bash {BENCH_WRAPPER} {TIME_BIN} {params.tsec} {output.time} \
+            "{input.bin} ultrabubbles -g '$staged' -o '$scratch/bubbles.txt' -j 1 -m {BF_STACK} > '$scratch/bf.log' 2>&1"
+        cp "$scratch/bf.log" {output.log:q}
+        if grep -q '^EXIT_CODE=' {output.time:q}; then echo "BubbleFinder ultrabubbles failed" >&2; exit 1; fi
+        cp "$scratch/bubbles.txt" {output.bubbles:q}
+        """
+
+rule run_d_bubbles:
+    input:
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        bin=BF_BIN,
+        bin_sha=os.path.join(TOOLS_DIR, "paper_bubblefinder.sha256"),
+        script="scripts/run_d.py",
+    output:
+        receipt=os.path.join(RESULTS_DIR, "{ds}.{variant}.receipt.json"),
+        bubbles=os.path.join(RESULTS_DIR, "{ds}.{variant}.tsv"),
+        stdout=os.path.join(RESULTS_DIR, "{ds}.{variant}.stdout"),
+        stderr=os.path.join(RESULTS_DIR, "{ds}.{variant}.stderr"),
+    wildcard_constraints:
+        variant="d_bc_gfa|d_bc_gbz",
+    threads: 1
+    resources:
+        mem_mb=lambda wc: paper_gfa_memory(wc.ds) if wc.variant.endswith("gfa") else 180000,
+        runtime=720,
+    params:
+        graph=lambda wc: find_gbz(wc.ds) if wc.variant.endswith("gbz") else find_gfa(wc.ds),
+        prefix=lambda wc: os.path.join(RESULTS_DIR, wc.ds + "." + wc.variant),
+    shell:
+        """
+        {PYTHON:q} {input.script:q} --binary {input.bin:q} --graph {params.graph:q} \
+            --prefix {params.prefix:q} --expected-sha256 "$(cat {input.bin_sha:q})" \
+            --threads {threads} --tmpfs {BENCH_TMPFS:q} --admission {input.admission:q}
+        """
+
+rule d_tables:
+    input:
+        lock=TOOLCHAIN_LOCK,
+        results=all_result_files(),
+        empty=([os.path.join(RESULTS_DIR, ds + ".empty.pairs") for ds in DATASETS]
+               if "d_bc_gfa" in TOOL_VARIANTS else []),
+        script="scripts/d_table.py",
+    output:
+        table=os.path.join(TABLES_DIR, "d_bubble_comparison.tex"),
+        summary=os.path.join(TABLES_DIR, "d_bubble_comparison.tsv"),
+        performance=os.path.join(TABLES_DIR, "d_bubble_comparison-performance.tex"),
+    shell:
+        "mkdir -p {TABLES_DIR} && {PYTHON:q} {input.script} {RESULTS_DIR} {TABLES_DIR} --stem d_bubble_comparison --toolchain-lock {input.lock:q}"
+
+
+rule build_paper_analysis:
+    input:
+        physical="scripts/physical_compare.cpp",
+        sizes="scripts/quartiles.cpp",
+        billi="scripts/paper_billi_filter.cpp",
+        analysis_headers=glob.glob("scripts/analysis/*.hpp"),
+        core=os.path.join(BF_SRC, "src/dominators/d_bubbles.cpp"),
+        headers=glob.glob(os.path.join(BF_SRC, "src", "**", "*.hpp"), recursive=True),
+    output:
+        physical=os.path.join(TOOLS_DIR, "paper_physical_compare"),
+        sizes=os.path.join(TOOLS_DIR, "paper_quartiles"),
+        billi=os.path.join(TOOLS_DIR, "paper_billi_filter"),
+    shell:
+        """
+        set -euo pipefail
+        mkdir -p {TOOLS_DIR:q}
+        {CXX:q} -O3 -std=c++17 -pthread -I{BF_SRC:q}/src {input.physical:q} {input.core:q} -o {output.physical:q}
+        {CXX:q} -O3 -std=c++17 -pthread -I{BF_SRC:q}/src {input.sizes:q} {input.core:q} -o {output.sizes:q}
+        {CXX:q} -O3 -std=c++17 -pthread -I{BF_SRC:q}/src {input.billi:q} {input.core:q} -o {output.billi:q}
+        """
+
+
+rule paper_vg_mapping:
+    input:
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        stats=os.path.join(RESULTS_DIR, "{ds}.gfa_stats"),
+        vg=VG_BIN,
+        script="scripts/paper_vg_mapping.py",
+    output:
+        translation=os.path.join(PAPER_DIR, "{ds}.vg-translation.tsv"),
+        report=os.path.join(PAPER_DIR, "{ds}.vg-translation.json"),
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+    shell:
+        """
+        set -euo pipefail
+        mkdir -p {PAPER_DIR:q}
+        {PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q}
+        {PYTHON:q} {input.script:q} --graph {params.gfa:q} --stats {input.stats:q} --vg {input.vg:q} \
+            --translation {output.translation:q} --report {output.report:q} --tmpdir {BENCH_TMPFS:q}
+        {PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q}
+        """
+
+
+rule paper_vg_catalogue:
+    input:
+        bubbles=lambda wc: paper_vg_catalogue_path(wc.ds, ".pairs"),
+        time=lambda wc: paper_vg_catalogue_path(wc.ds, ".time"),
+        provenance=lambda wc: paper_vg_catalogue_path(wc.ds, ".time") + ".toolchain.json",
+        lock=TOOLCHAIN_LOCK,
+        admission=INPUT_ADMISSION,
+        admission_script="scripts/check_admitted_input.py",
+        provenance_script="scripts/toolchain_provenance.py",
+        stats=os.path.join(RESULTS_DIR, "{ds}.gfa_stats"),
+        translation=os.path.join(PAPER_DIR, "{ds}.vg-translation.tsv"),
+        report=os.path.join(PAPER_DIR, "{ds}.vg-translation.json"),
+        script="scripts/paper_catalogues.py",
+    output:
+        bubbles=os.path.join(PAPER_DIR, "{ds}.vg.pairs.tsv"),
+        status=os.path.join(PAPER_DIR, "{ds}.vg.pairs.json"),
+    params:
+        graph=lambda wc: find_gfa(wc.ds),
+        measurement_graph=lambda wc: find_gbz(wc.ds) if wc.ds == GBZ_MAIN else find_gfa(wc.ds),
+    shell:
+        """
+        {PYTHON:q} {input.script:q} vg --input {input.bubbles:q} --time {input.time:q} --toolchain-lock {input.lock:q} --admission {input.admission:q} --measurement-graph {params.measurement_graph:q} \
+            --stats {input.stats:q} --translation {input.translation:q} --mapping-report {input.report:q} --graph {params.graph:q} --version {VG_VERSION:q} \
+            --tmpdir {BENCH_TMPFS:q} --output {output.bubbles:q} --status {output.status:q}
+        """
+
+
+rule paper_vg_ultrabubble_catalogue:
+    input:
+        bubbles=lambda wc: paper_vg_catalogue_path(wc.ds, ".ub.pairs"),
+        time=lambda wc: paper_vg_catalogue_path(wc.ds, ".time"),
+        provenance=lambda wc: paper_vg_catalogue_path(wc.ds, ".time") + ".toolchain.json",
+        lock=TOOLCHAIN_LOCK,
+        admission=INPUT_ADMISSION,
+        admission_script="scripts/check_admitted_input.py",
+        provenance_script="scripts/toolchain_provenance.py",
+        stats=os.path.join(RESULTS_DIR, "{ds}.gfa_stats"),
+        translation=os.path.join(PAPER_DIR, "{ds}.vg-translation.tsv"),
+        report=os.path.join(PAPER_DIR, "{ds}.vg-translation.json"),
+        script="scripts/paper_catalogues.py",
+    output:
+        bubbles=os.path.join(PAPER_DIR, "{ds}.vg-ub.pairs.tsv"),
+        status=os.path.join(PAPER_DIR, "{ds}.vg-ub.pairs.json"),
+    params:
+        graph=lambda wc: find_gfa(wc.ds),
+        measurement_graph=lambda wc: find_gbz(wc.ds) if wc.ds == GBZ_MAIN else find_gfa(wc.ds),
+    shell:
+        """
+        {PYTHON:q} {input.script:q} vg --input {input.bubbles:q} --time {input.time:q} --toolchain-lock {input.lock:q} --admission {input.admission:q} --measurement-graph {params.measurement_graph:q} \
+            --stats {input.stats:q} --translation {input.translation:q} --mapping-report {input.report:q} --graph {params.graph:q} --version {VG_VERSION:q} \
+            --tmpdir {BENCH_TMPFS:q} --output {output.bubbles:q} --status {output.status:q}
+        """
+
+
+rule paper_billi_catalogue:
+    input:
+        bubbles=os.path.join(RESULTS_DIR, "{ds}.billi.txt"),
+        time=os.path.join(RESULTS_DIR, "{ds}.billi.time"),
+        provenance=os.path.join(RESULTS_DIR, "{ds}.billi.time") + ".toolchain.json",
+        lock=TOOLCHAIN_LOCK,
+        admission=INPUT_ADMISSION,
+        admission_script="scripts/check_admitted_input.py",
+        provenance_script="scripts/toolchain_provenance.py",
+        script="scripts/paper_catalogues.py",
+    output:
+        bubbles=os.path.join(PAPER_DIR, "{ds}.billi.pairs.tsv"),
+        status=os.path.join(PAPER_DIR, "{ds}.billi.pairs.json"),
+    params:
+        graph=lambda wc: find_gfa(wc.ds),
+    shell:
+        """
+        mkdir -p {PAPER_DIR:q}
+        {PYTHON:q} {input.script:q} billi --input {input.bubbles:q} --time {input.time:q} --toolchain-lock {input.lock:q} --admission {input.admission:q} --graph {params.graph:q} \
+            --tmpdir {BENCH_TMPFS:q} --output {output.bubbles:q} --status {output.status:q}
+        """
+
+
+rule paper_physical_comparison:
+    input:
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        bin=os.path.join(TOOLS_DIR, "paper_physical_compare"),
+        d=lambda wc: paper_d_catalogue_path(wc.ds, ".tsv"),
+        d_receipt=lambda wc: paper_d_catalogue_path(wc.ds, ".receipt.json"),
+        vg=os.path.join(PAPER_DIR, "{ds}.vg.pairs.tsv"),
+    output:
+        summary=os.path.join(PAPER_DIR, "{ds}.physical.tsv"),
+        d=os.path.join(PAPER_DIR, "{ds}.d.nontrivial.tsv"),
+        vg=os.path.join(PAPER_DIR, "{ds}.vg.nontrivial.tsv"),
+    resources:
+        mem_mb=lambda wc: paper_gfa_memory(wc.ds),
+        runtime=720,
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        d_graph=lambda wc: find_gbz(wc.ds) if wc.ds == GBZ_MAIN else find_gfa(wc.ds),
+    shell:
+        """
+        set -euo pipefail
+        {PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q} --d-receipt {input.d_receipt:q} --d-graph {params.d_graph:q}
+        {input.bin:q} {params.gfa:q} {input.d:q} {input.vg:q} {output.d:q}.raw {output.vg:q}.raw > {output.summary:q}
+        {PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q} --d-receipt {input.d_receipt:q} --d-graph {params.d_graph:q}
+        LC_ALL=C sort -u -T {BENCH_TMPFS:q} {output.d:q}.raw -o {output.d:q}
+        LC_ALL=C sort -u -T {BENCH_TMPFS:q} {output.vg:q}.raw -o {output.vg:q}
+        rm {output.d:q}.raw {output.vg:q}.raw
+        """
+
+
+rule paper_bubble_sizes:
+    input:
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        bin=os.path.join(TOOLS_DIR, "paper_quartiles"),
+        d=lambda wc: paper_d_catalogue_path(wc.ds, ".tsv"),
+        d_receipt=lambda wc: paper_d_catalogue_path(wc.ds, ".receipt.json"),
+        guard="scripts/check_admitted_input.py",
+    output:
+        bubbles=os.path.join(PAPER_DIR, "{ds}.sizes.tsv"),
+        summary=os.path.join(PAPER_DIR, "{ds}.quartiles.tsv"),
+    resources:
+        mem_mb=lambda wc: paper_gfa_memory(wc.ds),
+        runtime=720,
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+        d_graph=lambda wc: find_gbz(wc.ds) if wc.ds == GBZ_MAIN else find_gfa(wc.ds),
+    shell:
+        """
+        set -euo pipefail
+        {PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q} --d-receipt {input.d_receipt:q} --d-graph {params.d_graph:q}
+        {input.bin:q} {params.gfa:q} {input.d:q} {output.bubbles:q} > {output.summary:q}
+        {PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q} --d-receipt {input.d_receipt:q} --d-graph {params.d_graph:q} --verify-sha256
+        """
+
+
+rule paper_billi_nontrivial:
+    input:
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        bin=os.path.join(TOOLS_DIR, "paper_billi_filter"),
+        bubbles=os.path.join(PAPER_DIR, "{ds}.billi.pairs.tsv"),
+        vg=os.path.join(PAPER_DIR, "{ds}.vg.nontrivial.tsv"),
+        status=os.path.join(PAPER_DIR, "{ds}.billi.pairs.json"),
+    output:
+        bubbles=os.path.join(PAPER_DIR, "{ds}.billi.nontrivial.tsv"),
+        summary=os.path.join(PAPER_DIR, "{ds}.billi.physical.tsv"),
+        outside=os.path.join(PAPER_DIR, "{ds}.billi.outside-vg.tsv"),
+    resources:
+        mem_mb=lambda wc: paper_gfa_memory(wc.ds),
+        runtime=720,
+    params:
+        gfa=lambda wc: find_gfa(wc.ds),
+    shell:
+        """
+        set -euo pipefail
+        status=$({PYTHON:q} -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' {input.status:q})
+        if [ "$status" = failed ]; then
+            : > {output.bubbles:q}
+            printf 'x\ty\tsnarl\n' > {output.outside:q}
+            printf 'metric\tvalue\nstatus\tfailed\n' > {output.summary:q}
+        elif [ "$status" = ok ]; then
+            {PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q}
+            {input.bin:q} {params.gfa:q} {input.bubbles:q} {input.vg:q} {output.bubbles:q} {output.outside:q} > {output.summary:q}
+            {PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.gfa:q}
+        else
+            echo "Unknown Billi status: $status" >&2; exit 1
+        fi
+        """
+
+
+rule paper_overlaps:
+    input:
+        d=os.path.join(PAPER_DIR, "{ds}.d.nontrivial.tsv"),
+        vg=os.path.join(PAPER_DIR, "{ds}.vg.nontrivial.tsv"),
+        ub=os.path.join(PAPER_DIR, "{ds}.vg-ub.pairs.tsv"),
+        billi=os.path.join(PAPER_DIR, "{ds}.billi.nontrivial.tsv"),
+        billi_status=os.path.join(PAPER_DIR, "{ds}.billi.pairs.json"),
+        physical=os.path.join(PAPER_DIR, "{ds}.physical.tsv"),
+        script="scripts/paper_venn.py",
+    output:
+        os.path.join(PAPER_DIR, "{ds}.overlaps.tsv"),
+    resources:
+        mem_mb=16000,
+        runtime=720,
+    shell:
+        """
+        {PYTHON:q} {input.script:q} --d {input.d:q} --vg {input.vg:q} --vg-ultrabubbles {input.ub:q} \
+            --billi {input.billi:q} --billi-status {input.billi_status:q} \
+            --physical-summary {input.physical:q} --output {output:q}
+        """
+
+
+rule paper_classification:
+    input:
+        d=os.path.join(PAPER_DIR, "{ds}.d.nontrivial.tsv"),
+        vg=os.path.join(PAPER_DIR, "{ds}.vg.nontrivial.tsv"),
+        sizes=os.path.join(PAPER_DIR, "{ds}.sizes.tsv"),
+        billi=os.path.join(PAPER_DIR, "{ds}.billi.outside-vg.tsv"),
+        billi_status=os.path.join(PAPER_DIR, "{ds}.billi.pairs.json"),
+        script="scripts/paper_classification.py",
+    output:
+        bubbles=os.path.join(PAPER_DIR, "{ds}.d-only.classification.tsv"),
+        report=os.path.join(PAPER_DIR, "{ds}.classification.json"),
+    shell:
+        """
+        {PYTHON:q} {input.script:q} --d {input.d:q} --vg {input.vg:q} --sizes {input.sizes:q} \
+            --billi-outside {input.billi:q} --billi-status {input.billi_status:q} \
+            --output {output.bubbles:q} --report {output.report:q}
+        """
+
+
+rule paper_bubblefinder_threads:
+    input:
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        bin=BF_BIN,
+        bin_sha=os.path.join(TOOLS_DIR, "paper_bubblefinder.sha256"),
+        script="scripts/run_d.py",
+    output:
+        receipt=os.path.join(PAPER_DIR, "{ds}.{mode}.{jobs}.receipt.json"),
+        bubbles=os.path.join(PAPER_DIR, "{ds}.{mode}.{jobs}.tsv"),
+        stdout=os.path.join(PAPER_DIR, "{ds}.{mode}.{jobs}.stdout"),
+        stderr=os.path.join(PAPER_DIR, "{ds}.{mode}.{jobs}.stderr"),
+    wildcard_constraints:
+        mode="d|u",
+        jobs="[1-9][0-9]*",
+    threads: lambda wc: int(wc.jobs)
+    resources:
+        mem_mb=lambda wc: 180000 if (wc.mode == "d" and wc.ds in PAPER_GBZ) or wc.ds == "hprc-v2.1-mc-chm13" else paper_gfa_memory(wc.ds),
+        runtime=720,
+        cpus_per_task=lambda wc, threads: threads,
+    params:
+        graph=lambda wc: paper_input(wc.ds) if wc.mode == "d" or wc.ds == "hprc-v2.1-mc-chm13" else find_gfa(wc.ds),
+        prefix=lambda wc: os.path.join(PAPER_DIR, wc.ds + "." + wc.mode + "." + wc.jobs),
+        flags=lambda wc: "--ultrabubbles-only" if wc.mode == "u" else "",
+    shell:
+        """
+        set -euo pipefail
+        [ {threads} = {wildcards.jobs} ] || {{ echo "Allocate {wildcards.jobs} CPUs for this measurement" >&2; exit 1; }}
+        {PYTHON:q} {input.script:q} --binary {input.bin:q} --graph {params.graph:q} --prefix {params.prefix:q} \
+            --expected-sha256 "$(cat {input.bin_sha:q})" --threads {threads} --tmpfs {BENCH_TMPFS:q} --admission {input.admission:q} {params.flags}
+        """
+
+
+rule paper_thread_consistency:
+    input:
+        bubbles=expand(os.path.join(PAPER_DIR, "{{ds}}.d.{jobs}.tsv"), jobs=PAPER_THREADS),
+        receipts=expand(os.path.join(PAPER_DIR, "{{ds}}.d.{jobs}.receipt.json"), jobs=PAPER_THREADS),
+        reference=lambda wc: paper_d_catalogue_path(wc.ds, ".tsv"),
+        reference_receipt=lambda wc: paper_d_catalogue_path(wc.ds, ".receipt.json"),
+        script="scripts/paper_thread_consistency.py",
+    output:
+        os.path.join(PAPER_DIR, "{ds}.thread-consistency.json"),
+    params:
+        samples=lambda wc: " ".join("--sample " + shlex.quote(str(int(j)) + "=" +
+            os.path.join(PAPER_DIR, wc.ds + ".d." + str(int(j)) + ".tsv")) for j in PAPER_THREADS),
+        receipts=lambda wc: " ".join("--receipt " + shlex.quote(str(int(j)) + "=" +
+            os.path.join(PAPER_DIR, wc.ds + ".d." + str(int(j)) + ".receipt.json")) for j in PAPER_THREADS),
+    shell:
+        """
+        {PYTHON:q} {input.script:q} --dataset {wildcards.ds:q} {params.samples} {params.receipts} \
+            --reference {input.reference:q} --reference-receipt {input.reference_receipt:q} --output {output:q}
+        """
+
+
+rule paper_validation_nontrivial:
+    input:
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        bin=BF_BIN,
+        bin_sha=os.path.join(TOOLS_DIR, "paper_bubblefinder.sha256"),
+        script="scripts/run_d.py",
+    output:
+        receipt=os.path.join(PAPER_DIR, "{ds}.validation-nontrivial.receipt.json"),
+        bubbles=os.path.join(PAPER_DIR, "{ds}.validation-nontrivial.tsv"),
+        stdout=os.path.join(PAPER_DIR, "{ds}.validation-nontrivial.stdout"),
+        stderr=os.path.join(PAPER_DIR, "{ds}.validation-nontrivial.stderr"),
+    threads: 1
+    resources:
+        mem_mb=lambda wc: 180000 if wc.ds == GBZ_MAIN else paper_gfa_memory(wc.ds),
+        runtime=720,
+    params:
+        graph=lambda wc: find_gbz(wc.ds) if wc.ds == GBZ_MAIN else find_gfa(wc.ds),
+        prefix=lambda wc: os.path.join(PAPER_DIR, wc.ds + ".validation-nontrivial"),
+    shell:
+        """
+        {PYTHON:q} {input.script:q} --binary {input.bin:q} --graph {params.graph:q} \
+            --prefix {params.prefix:q} --expected-sha256 "$(cat {input.bin_sha:q})" \
+            --threads 1 --nontrivial --tmpfs {BENCH_TMPFS:q} --admission {input.admission:q}
+        """
+
+
+rule paper_validation_no_external:
+    input:
+        admission=INPUT_ADMISSION,
+        prior_comparisons=[config["validation_prior_comparisons"]] if config.get("validation_prior_comparisons") else [],
+        lock=TOOLCHAIN_LOCK,
+        main_d=[paper_d_catalogue_path(ds, ".receipt.json") for ds in PAPER_DATASETS],
+        d=expand(os.path.join(PAPER_DIR, "{ds}.d.{jobs}.receipt.json"), ds=PAPER_DATASETS, jobs=[1, 8]),
+        consistent=expand(os.path.join(PAPER_DIR, "{ds}.thread-consistency.json"), ds=PAPER_DATASETS),
+        u=expand(os.path.join(PAPER_DIR, "{ds}.u.1.receipt.json"), ds=PAPER_DATASETS),
+        nontrivial=expand(os.path.join(PAPER_DIR, "{ds}.validation-nontrivial.receipt.json"), ds=PAPER_DATASETS),
+        sizes=expand(os.path.join(PAPER_DIR, "{ds}.quartiles.tsv"), ds=PAPER_DATASETS),
+        topology=expand(os.path.join(RESULTS_DIR, "{ds}.gfa_stats"), ds=PAPER_DATASETS),
+        ultrabubble_times=[paper_ultrabubble_time(ds) for ds in PAPER_DATASETS],
+        ultrabubble_all=[paper_ultrabubble_time(ds).replace(".time", ".txt") for ds in PAPER_DATASETS],
+        ultrabubble_log=[paper_ultrabubble_time(ds).replace(".time", ".log") for ds in PAPER_DATASETS],
+        ultrabubble_nontrivial=[paper_ultrabubble_nontrivial(ds) for ds in PAPER_DATASETS],
+        ultrabubble_provenance=[paper_ultrabubble_time(ds) + ".toolchain.json" for ds in PAPER_DATASETS],
+        ultrabubble_nontrivial_times=[paper_ultrabubble_nontrivial_time(ds) for ds in PAPER_DATASETS],
+        ultrabubble_nontrivial_provenance=[paper_ultrabubble_nontrivial_time(ds) + ".toolchain.json" for ds in PAPER_DATASETS],
+        bin_sha=os.path.join(TOOLS_DIR, "paper_bubblefinder.sha256"),
+        script="scripts/paper_validation_summary.py",
+        prior_overlaps="scripts/paper_prior_overlaps.py",
+        catalogue="scripts/paper_catalogues.py",
+        venn="scripts/paper_venn.py",
+        renderer="scripts/paper_tables.py",
+        datasets="scripts/datasets.py",
+        names="config/datasets.tsv",
+        diagrams="scripts/paper_validation_diagrams.py",
+        template="templates/paper-tables.tex",
+    output:
+        tsv=os.path.join(TABLES_DIR, "validation-no-vg-billi", "paper-results.tsv"),
+        latex=os.path.join(TABLES_DIR, "validation-no-vg-billi", "paper-results.tex"),
+        report=os.path.join(TABLES_DIR, "validation-no-vg-billi", "validation.json"),
+        overlaps=os.path.join(TABLES_DIR, "validation-no-vg-billi", "figures", "overlaps.tex"),
+        four_set=os.path.join(TABLES_DIR, "validation-no-vg-billi", "figures", "four-set.tex"),
+    params:
+        datasets=" ".join("--dataset " + shlex.quote(ds) for ds in PAPER_DATASETS),
+        existing_results=config.get("validation_existing_results", RESULTS_DIR),
+        prior_flag=("--prior-comparisons " + shlex.quote(config["validation_prior_comparisons"])
+                    if config.get("validation_prior_comparisons") else ""),
+    shell:
+        """
+        mkdir -p "$(dirname {output.tsv:q})"
+        {PYTHON:q} {input.script:q} --results {RESULTS_DIR:q} --paper {PAPER_DIR:q} \
+            --existing-results {params.existing_results:q} --admission {input.admission:q} \
+            {params.prior_flag} \
+            --tmpdir {BENCH_TMPFS:q} \
+            --toolchain-lock {input.lock:q} --binary-sha {input.bin_sha:q} \
+            --template {input.template:q} --output {output.tsv:q} --latex {output.latex:q} \
+            --report {output.report:q} {params.datasets}
+        {PYTHON:q} {input.diagrams:q} --results {output.tsv:q} --report {output.report:q} \
+            --overlaps {output.overlaps:q} --four-set {output.four_set:q}
+        """
+
+
+rule paper_vg_threads:
+    input:
+        benchmark_wrapper=BENCH_WRAPPER,
+        measurement_provenance="scripts/toolchain_provenance.py",
+        ready=DATA_READY,
+        admission=INPUT_ADMISSION,
+        guard="scripts/check_admitted_input.py",
+        lock=TOOLCHAIN_LOCK,
+        bin=VG_BIN,
+    output:
+        time=os.path.join(PAPER_DIR, "{ds}.vg.{jobs}.time"),
+        provenance=os.path.join(PAPER_DIR, "{ds}.vg.{jobs}.time") + ".toolchain.json",
+        log=os.path.join(PAPER_DIR, "{ds}.vg.{jobs}.log"),
+    wildcard_constraints:
+        jobs="[1-9][0-9]*",
+    threads: lambda wc: int(wc.jobs)
+    resources:
+        mem_mb=lambda wc: 180000 if wc.ds in PAPER_GBZ else paper_gfa_memory(wc.ds),
+        runtime=720,
+        cpus_per_task=lambda wc, threads: threads,
+    params:
+        graph=lambda wc: paper_input(wc.ds),
+        tsec=lambda wc: timeout_sec("vg_gbz_T" if wc.ds in PAPER_GBZ else "vg_gfa_T"),
+    shell:
+        """
+        set -euo pipefail
+        [ {threads} = {wildcards.jobs} ] || {{ echo "Allocate {wildcards.jobs} CPUs for this measurement" >&2; exit 1; }}
+        mkdir -p {PAPER_DIR:q}
+        scratch=$(mktemp -d {BENCH_TMPFS:q}/paper-vg.XXXXXXXX)
+        trap 'rm -rf "$scratch"' EXIT
+        staged="$scratch/$(basename {params.graph:q})"
+        cp {params.graph:q} "$staged"
+        cmp -s {params.graph:q} "$staged"
+        graph_sha=$({PYTHON:q} {input.guard:q} --admission {input.admission:q} --graph {params.graph:q} --print-sha256)
+        BENCH_GRAPH_SHA256="$graph_sha" BENCH_PYTHON={PYTHON:q} BENCH_TOOLCHAIN_LOCK={input.lock:q} BENCH_TOOLCHAIN_TOOL=vg BENCH_TOOLCHAIN_EXE={input.bin:q} \
+            bash {BENCH_WRAPPER:q} {TIME_BIN:q} {params.tsec} {output.time:q} \
+            "{input.bin} snarls -T -A integrated -t {threads} '$staged' > '$scratch/snarls.pb' 2> '$scratch/vg.log'"
+        cp "$scratch/vg.log" {output.log:q}
+        """
+
+
+rule paper_summary:
+    input:
+        physical=expand(os.path.join(PAPER_DIR, "{ds}.physical.tsv"), ds=PAPER_DATASETS),
+        sizes=expand(os.path.join(PAPER_DIR, "{ds}.quartiles.tsv"), ds=PAPER_DATASETS),
+        overlaps=expand(os.path.join(PAPER_DIR, "{ds}.overlaps.tsv"), ds=PAPER_DATASETS),
+        classifications=expand(os.path.join(PAPER_DIR, "{ds}.classification.json"), ds=PAPER_DATASETS),
+        billi=expand(os.path.join(PAPER_DIR, "{ds}.billi.pairs.json"), ds=PAPER_DATASETS),
+        billi_times=expand(os.path.join(RESULTS_DIR, "{ds}.billi.time"), ds=PAPER_DATASETS),
+        billi_logs=expand(os.path.join(RESULTS_DIR, "{ds}.billi.log"), ds=PAPER_DATASETS),
+        billi_counts=expand(os.path.join(RESULTS_DIR, "{ds}.billi.counts"), ds=PAPER_DATASETS),
+        vg_counts=[paper_vg_counts(ds, True) for ds in PAPER_DATASETS],
+        vg_nontrivial_counts=[paper_vg_counts(ds, False) for ds in PAPER_DATASETS],
+        vg_gfa_times=expand(os.path.join(RESULTS_DIR, "{ds}.vg_gfa.gfa.time"), ds=PAPER_DATASETS),
+        topology=expand(os.path.join(RESULTS_DIR, "{ds}.gfa_stats"), ds=PAPER_DATASETS),
+        ultrabubble_times=[paper_ultrabubble_time(ds) for ds in PAPER_DATASETS],
+        ultrabubble_all=[paper_ultrabubble_time(ds).replace(".time", ".txt") for ds in PAPER_DATASETS],
+        ultrabubble_log=[paper_ultrabubble_time(ds).replace(".time", ".log") for ds in PAPER_DATASETS],
+        ultrabubble_nontrivial=[paper_ultrabubble_nontrivial(ds) for ds in PAPER_DATASETS],
+        d_gfa=[paper_d_catalogue_path(ds, ".receipt.json") for ds in PAPER_DATASETS],
+        d=expand(os.path.join(PAPER_DIR, "{ds}.d.{jobs}.receipt.json"), ds=PAPER_DATASETS, jobs=PAPER_THREADS),
+        thread_consistency=expand(os.path.join(PAPER_DIR, "{ds}.thread-consistency.json"), ds=PAPER_DATASETS),
+        u=expand(os.path.join(PAPER_DIR, "{ds}.u.1.receipt.json"), ds=PAPER_DATASETS),
+        vg=expand(os.path.join(PAPER_DIR, "{ds}.vg.{jobs}.time"), ds=PAPER_DATASETS, jobs=PAPER_THREADS),
+        lock=TOOLCHAIN_LOCK,
+        admission=INPUT_ADMISSION,
+        admission_script="scripts/check_admitted_input.py",
+        provenance_script="scripts/toolchain_provenance.py",
+        billi_provenance=expand(os.path.join(RESULTS_DIR, "{ds}.billi.time.toolchain.json"), ds=PAPER_DATASETS),
+        vg_all_provenance=[paper_vg_counts(ds, True).replace(".snarl_counts", ".time.toolchain.json") for ds in PAPER_DATASETS],
+        vg_nontrivial_provenance=[paper_vg_counts(ds, False).replace(".snarl_counts", ".time.toolchain.json") for ds in PAPER_DATASETS],
+        vg_gfa_provenance=expand(os.path.join(RESULTS_DIR, "{ds}.vg_gfa.gfa.time.toolchain.json"), ds=PAPER_DATASETS),
+        ultrabubble_provenance=[paper_ultrabubble_time(ds) + ".toolchain.json" for ds in PAPER_DATASETS],
+        ultrabubble_nontrivial_times=[paper_ultrabubble_nontrivial_time(ds) for ds in PAPER_DATASETS],
+        ultrabubble_nontrivial_provenance=[paper_ultrabubble_nontrivial_time(ds) + ".toolchain.json" for ds in PAPER_DATASETS],
+        vg_thread_provenance=expand(os.path.join(PAPER_DIR, "{ds}.vg.{jobs}.time.toolchain.json"), ds=PAPER_DATASETS, jobs=PAPER_THREADS),
+        script="scripts/paper_summary.py",
+        table_renderer="scripts/paper_tables.py",
+        datasets="scripts/datasets.py",
+        names="config/datasets.tsv",
+        table_template="templates/paper-tables.tex",
+    output:
+        tsv=os.path.join(TABLES_DIR, "paper-results.tsv"),
+        latex=os.path.join(TABLES_DIR, "paper-results.tex"),
+    params:
+        datasets=" ".join("--dataset " + shlex.quote(ds) for ds in PAPER_DATASETS),
+        threads=" ".join("--threads " + str(int(j)) for j in PAPER_THREADS),
+    shell:
+        """
+        mkdir -p {TABLES_DIR:q}
+        {PYTHON:q} {input.script:q} --results {RESULTS_DIR:q} --paper {PAPER_DIR:q} \
+            --output {output.tsv:q} --latex {output.latex:q} --table-template {input.table_template:q} \
+            --toolchain-lock {input.lock:q} --admission {input.admission:q} {params.datasets} {params.threads}
+        """
+
+
+rule paper_overlap_figures:
+    input:
+        overlaps=expand(os.path.join(PAPER_DIR, "{ds}.overlaps.tsv"), ds=PAPER_DATASETS),
+        receipts=[paper_d_catalogue_path(ds, ".receipt.json") for ds in PAPER_DATASETS],
+        script="scripts/paper_diagrams.py",
+        table_labels="scripts/paper_tables.py",
+        datasets="scripts/datasets.py",
+        names="config/datasets.tsv",
+    output:
+        overlaps=os.path.join(PAPER_FIGURES, "overlaps.tex"),
+        four_set=os.path.join(PAPER_FIGURES, "four-set.tex"),
+    params:
+        datasets=" ".join("--dataset " + shlex.quote(ds) for ds in PAPER_DATASETS),
+        coverage=" ".join("--coverage-receipt " + shlex.quote(ds + "=" + paper_d_catalogue_path(ds, ".receipt.json"))
+                          for ds in PAPER_DATASETS),
+    shell:
+        """
+        mkdir -p {PAPER_FIGURES:q}
+        {PYTHON:q} {input.script:q} --paper {PAPER_DIR:q} {params.datasets} {params.coverage} \
+            --output {output.overlaps:q} --four-set {output.four_set:q}
+        """

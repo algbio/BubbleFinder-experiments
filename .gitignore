@@ -9,3 +9,6 @@
 ultrabubbles/tables/
 *.pid
 g++
+d-bubbles/tables/
+__pycache__/
+*.py[cod]
